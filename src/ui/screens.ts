@@ -923,23 +923,27 @@ export function endScreen(
         </div>
       </div>
     </div>`);
-  if (net) {
-    const row = m.querySelector('.row.end')!;
-    row.innerHTML = net.note ? `<span class="hint">${net.note}</span>` : '';
-    for (const b of net.buttons) {
-      const btn = document.createElement('button');
-      btn.textContent = b.label;
-      if (b.primary) btn.className = 'primary';
-      btn.addEventListener('click', b.on);
-      row.appendChild(btn);
-    }
-  } else {
+  if (net) endButtons(m, net);
+  else {
     m.querySelector('[data-a=rematch]')!.addEventListener('click', h.rematch);
     m.querySelector('[data-a=newmap]')!.addEventListener('click', h.newMap);
     m.querySelector('[data-a=quit]')!.addEventListener('click', h.quit);
   }
   requestAnimationFrame(() => drawChart(m.querySelector('.chart') as HTMLCanvasElement, w));
   return m;
+}
+
+/** A networked end screen's buttons and note (#233: again when hosting moves, the rest of the screen left as it is). */
+export function endButtons(m: HTMLElement, net: { buttons: { label: string; primary?: boolean; on: () => void }[]; note?: string }): void {
+  const row = m.querySelector('.row.end')!;
+  row.innerHTML = net.note ? `<span class="hint">${net.note}</span>` : '';
+  for (const b of net.buttons) {
+    const btn = document.createElement('button');
+    btn.textContent = b.label;
+    if (b.primary) btn.className = 'primary';
+    btn.addEventListener('click', b.on);
+    row.appendChild(btn);
+  }
 }
 
 /** "You won by domination", "Magenta won by elimination", ... */

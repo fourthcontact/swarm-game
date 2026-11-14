@@ -8,6 +8,7 @@ import type { HostGo } from './lobby';
 import { NetSession, type NetSessionOptions, type SessionSave } from './netSession';
 import { MAX_TURNS_PER_MSG, type Ctrl, type Msg, type MsgKind } from './protocol';
 import { oddOnes, rebuildState, Sequencer, SEQUENCER_DEFAULTS, type SequencerOptions, type SequencerState } from './sequencer';
+import { netNote, short } from './netlog';
 import { canGzip, chunkSnap, packSnap, settle, SnapAssembler, unpackSnap } from './snapwire';
 import { HOST_SELF, hostSequencer, type Transport } from './transport';
 
@@ -196,6 +197,12 @@ export const SETTLE_TRY_MS = 30_000;
  * transport never reports down): whoever runs the match becomes host (#190)
  */
 export const OWNER_QUIET_MS = 5000;
+/**
+ * …once the match is decided (#233): a host on the end screen may sit in a
+ * throttled window, and nothing hurries. Still finite, so a host that froze
+ * for good (a sleeping laptop) doesn't keep everyone from the lobby.
+ */
+export const OWNER_QUIET_AFTER_END_MS = 60_000;
 /** a better runner must beat the current one's worst round trip by this much, ms, and by RANK_GAIN of it (#190) */
 export const RANK_MARGIN_MS = 20;
 export const RANK_GAIN = 0.15;
@@ -1154,7 +1161,9 @@ export class NetMatch {
   private runnerChores(now: number): void {
     const seq = this.seq_;
     if (!seq) return;
-    if (this.owner !== this.mySeat && this.hostLeft(now)) {
+    const why = this.owner !== this.mySeat ? this.hostLeft(now) : null;
+    if (why) {
+      netNote(`== taking over as host: seat ${this.owner} ${why}${this.session.world.over ? ', after the end' : ''}`);
       // ours at once (a halted or paused match closes no turns: someone must be able to resume it); the rest hear it in the log
       seq.addCtrl({ k: 'owner', seat: this.mySeat });
       this.setOwner(this.mySeat);
@@ -1164,17 +1173,21 @@ export class NetMatch {
   }
 
   /**
-   * The host is gone (#190): its connection dropped, or it has been silent
-   * a while with its page shown (frozen, or a link the transport never
-   * reports down). A hidden host stays host.
+   * Whether the host is gone (#190), and how, for the net log: its
+   * connection dropped, or it has been silent a while with its page shown
+   * (frozen, or a link the transport never reports down): OWNER_QUIET_MS,
+   * or OWNER_QUIET_AFTER_END_MS once the match is decided (#233). A hidden
+   * host stays host. Null while it's host.
    */
-  private hostLeft(now: number): boolean {
+  private hostLeft(now: number): string | null {
     const host = this.peers.find((p) => p.seat === this.owner);
-    if (!host) return true;
-    if (host.peer === this.self) return false;
-    if (this.gone.has(host.peer)) return now - (this.goneAt.get(host.peer) ?? now) >= BYE_WAIT_MS;
+    if (!host) return 'nobody holds the seat';
+    if (host.peer === this.self) return null;
+    const who = short(host.peer);
+    if (this.gone.has(host.peer)) return now - (this.goneAt.get(host.peer) ?? now) >= BYE_WAIT_MS ? `(${who}) left` : null;
     const b = this.beats.get(host.peer);
-    return !b?.hidden && now - (b?.at ?? this.started) >= OWNER_QUIET_MS;
+    const quiet = this.session.world.over ? OWNER_QUIET_AFTER_END_MS : OWNER_QUIET_MS;
+    return !b?.hidden && now - (b?.at ?? this.started) >= quiet ? `(${who}) went silent` : null;
   }
 
   /** Rank the players by their links and publish it if it changed (#190). */
@@ -1231,6 +1244,7 @@ export class NetMatch {
     this.owner = seat;
     this.seq_?.setPausers([seat]);
     const peer = this.peers.find((p) => p.seat === seat)?.peer ?? '';
+    netNote(`== the host is seat ${seat} (${short(peer)}) now${this.session.world.over ? ', after the end' : ''}`);
     this.events.onOwner?.(seat, peer);
   }
 

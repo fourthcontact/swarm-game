@@ -158,7 +158,10 @@ export class NetSession implements Session {
   beforeStep: ((tick: number, w: World) => void) | null = null;
   /** a control entry applied (a pause, a resume, a seat going away or to a bot), as the step before `tick` runs */
   onCtrl: ((tick: number, ctrl: Ctrl) => void) | null = null;
-  /** after the end (#233): the last held turn whose host and ranking ctrls we've read */
+  /**
+   * After the end (#233): the last turn taken without stepping, its ctrls
+   * read and the turn moved to `history`. -1 while the match goes on.
+   */
   private endRead = -1;
   /** a snapshot became this session's world (#164): the world at `tick`, with the turns after it to come */
   onAdopt: ((tick: number) => void) | null = null;
@@ -311,7 +314,7 @@ export class NetSession implements Session {
    * were never confirmed by anyone: they're left out.
    */
   closedTurns(): { first: number; turns: Turn[] } {
-    const upto = this.forkFloor >= 0 ? Math.min(this.forkFloor, this.world_.tick) : this.world_.tick;
+    const upto = this.forkFloor >= 0 ? Math.min(this.forkFloor, this.taken) : this.taken;
     const turns = this.history.slice(0, Math.max(0, upto + 1 - this.historyFrom));
     for (let t = upto + 1; t <= this.held_; t++) turns.push(this.turns.get(t)!);
     return { first: this.historyFrom, turns };
@@ -379,6 +382,12 @@ export class NetSession implements Session {
     this.wantAt = -Infinity;
     this.turnAt = now;
     this.ackAt = -Infinity;
+    if (this.endRead >= next && this.world_.tick < next) {
+      // after the end (#233): turns we read past `next` were never confirmed. Take them back; their replacements are read again
+      this.history = this.history.slice(0, Math.max(0, next - this.historyFrom));
+      keepUntil(this.ctrlLog, next - 1);
+      this.endRead = next - 1;
+    }
     if (this.world_.tick >= next) {
       // forked: the orders that ran in the lost stretch go again, with the agreed world
       for (const [s, l] of this.landed) {
@@ -395,9 +404,14 @@ export class NetSession implements Session {
     this.maxSeen = Math.min(this.maxSeen, next - 1);
   }
 
-  /** turns held beyond the world's tick */
+  /** turns held beyond the last one taken */
   get buffered(): number {
-    return this.held_ - this.world_.tick;
+    return this.held_ - this.taken;
+  }
+
+  /** the last turn taken: stepped, or after the end (#233) read without stepping */
+  private get taken(): number {
+    return Math.max(this.world_.tick, this.endRead);
   }
 
   /**
@@ -521,6 +535,7 @@ export class NetSession implements Session {
    */
   restore(save: SessionSave): void {
     this.world_ = restoreWorld(this.setup, decodeSnap(save.snap));
+    this.endRead = -1;
     const tick = this.world_.tick;
     this.turns.clear();
     this.held_ = tick;
@@ -553,7 +568,7 @@ export class NetSession implements Session {
     if (o.restep) {
       // a resync (#165): the turns we stepped past `tick` run again on the agreed world
       const from = this.historyFrom;
-      for (let t = tick + 1; t <= this.world_.tick; t++) {
+      for (let t = tick + 1; t <= this.taken; t++) {
         const turn = this.history[t - from];
         if (turn && !this.turns.has(t)) this.turns.set(t, turn);
       }
@@ -563,6 +578,7 @@ export class NetSession implements Session {
       for (const k of [...this.kept.keys()]) if (k > tick) this.kept.delete(k);
     }
     this.world_ = w;
+    this.endRead = -1;
     for (const t of [...this.turns.keys()]) if (t <= tick) this.turns.delete(t);
     this.held_ = tick;
     while (this.turns.has(this.held_ + 1)) this.held_++;
@@ -586,7 +602,7 @@ export class NetSession implements Session {
   }
 
   private turnIn(tick: number, turn: Turn, now: number): void {
-    const floor = this.forkFloor >= 0 ? this.forkFloor : this.world_.tick;
+    const floor = this.forkFloor >= 0 ? this.forkFloor : this.taken;
     if (tick <= floor || this.turns.has(tick)) return;
     this.turns.set(tick, turn);
     this.turnAt = now;
@@ -684,15 +700,20 @@ export class NetSession implements Session {
   /**
    * The match is decided, but turns still close (#233): who hosts the room
    * changes in them, and every page has to hear it, not just the one that
-   * runs the match. Their host and ranking ctrls, in order; the world
-   * stays as it ended, and the turns stay held for `closedTurns`.
+   * runs the match. Each turn is taken in order as it comes: its ctrls are
+   * applied and logged, and it goes to `history` like a stepped one, so the
+   * log stays whole for a sequencer rebuilt from it. The world stays as it
+   * ended: nothing steps, nothing is hashed, and no desync can be called.
    */
   private readAfterEnd(): void {
-    // a fork took turns back: the ones that replace them are read again (owner and rank only say how things stand)
-    this.endRead = Math.min(Math.max(this.endRead, this.world_.tick), this.held_);
-    while (this.endRead < this.held_) {
-      const t = ++this.endRead;
-      for (const c of this.turns.get(t)?.ctrl ?? []) if (c.k === 'owner' || c.k === 'rank') this.onCtrl?.(t, c);
+    if (this.endRead < this.world_.tick) this.endRead = this.world_.tick;
+    while (this.turns.has(this.endRead + 1)) {
+      const t = this.endRead + 1;
+      const turn = this.turns.get(t)!;
+      this.turns.delete(t);
+      this.history.push(turn);
+      this.endRead = t;
+      for (const c of turn.ctrl ?? []) if (c.k !== 'desync') this.applyCtrl(t, c);
     }
   }
 

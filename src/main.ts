@@ -36,7 +36,7 @@ import { DemoOverlay } from './ui/demo';
 import { Hud } from './ui/hud';
 import { ScreenAwake } from './ui/wakeLock';
 import { initUiMode, isMobile, markMobileNoticeSeen, onCellData, setUiMode, shouldShowMobileNotice } from './ui/mobile';
-import { buildSetup, campaignMenu, randomSetup, skirmishMenu, endScreen, howToPlay, loadPrefs, mainMenu, menuCard, missionBriefing, missionDebrief, mobileNotice, NEXT_STEP_TEXT, pauseMenu, quickSetup, randomSeed, settingsScreen, skirmishSetup, tutorialMenu } from './ui/screens';
+import { buildSetup, campaignMenu, randomSetup, skirmishMenu, endButtons, endScreen, howToPlay, loadPrefs, mainMenu, menuCard, missionBriefing, missionDebrief, mobileNotice, NEXT_STEP_TEXT, pauseMenu, quickSetup, randomSeed, settingsScreen, skirmishSetup, tutorialMenu } from './ui/screens';
 import { creatureGrid } from './ui/creatures';
 import { BUILD } from './game/recording';
 import type { DesyncReport } from './net/desync';
@@ -200,6 +200,8 @@ class App {
   /** a full-screen modal (the run map) hides the menu and the demo: both pause under it (#130) */
   private covered = false;
   private endShown = false;
+  /** a room's end screen while it's up, for its buttons to follow hosting (#233) */
+  private endEl: HTMLElement | null = null;
   /** an Easy bot had our seat (#164): its return is worth a word */
   private ownBot = false;
   /** the resume countdown's last second shown, for its tick (#198) */
@@ -1294,6 +1296,13 @@ class App {
     this.renderRoom();
   }
 
+  /** A room's end-screen buttons: Back to lobby is the host's (#233: it moves with hosting). */
+  private endNet(room: Room): { buttons: { label: string; primary?: boolean; on: () => void }[]; note?: string } {
+    const buttons: { label: string; primary?: boolean; on: () => void }[] = [{ label: 'Leave room', on: () => this.leaveRoom() }];
+    if (room.host) buttons.push({ label: 'Back to lobby', primary: true, on: () => this.backToRoom() });
+    return { buttons, note: room.host ? undefined : 'The host can bring everyone back to the lobby.' };
+  }
+
   /** Who sits in a seat: their character's name in a room, else the colour's. */
   private seatName(seat: number): string {
     const row = this.room?.lobby?.state?.rows[seat];
@@ -1672,6 +1681,7 @@ class App {
     this.setModal(null);
     this.setScreen(null);
     this.endShown = false;
+    this.endEl = null;
     this.syncAwake();
     this.recSaved = false;
     this.quick = null;
@@ -1705,8 +1715,8 @@ class App {
           if (me) this.becomeRoomHost();
           else if (this.room?.host) this.becomeRoomGuest(peer);
           else (this.room?.lobby as GuestLobby | null)?.follow(peer);
-          // on the end screen (#233): "Back to lobby" goes with hosting
-          if (this.endShown && this.game?.result) this.showEnd();
+          // on the end screen (#233): "Back to lobby" goes with hosting; only its buttons change, whatever is open over it stays
+          if (this.endEl && this.room) endButtons(this.endEl, this.endNet(this.room));
           // halted by a desync: the card's host buttons (resync, resume) go with hosting
           const halted = this.match?.session.halted ?? -1;
           if (this.desyncView && halted >= 0) this.showDesync(halted);
@@ -1798,6 +1808,7 @@ class App {
     this.saveRec(reason, true);
     this.match?.close();
     this.match = null;
+    this.endEl = null;
     this.syncAwake();
     this.ownBot = false;
     this.stalled = false;
@@ -1929,9 +1940,8 @@ class App {
       const room = this.room;
       const names: Record<number, string> = {};
       room.lobby?.state?.rows.forEach((_, i) => (names[i] = this.seatName(i)));
-      const buttons = [{ label: 'Leave room', on: () => this.leaveRoom() }];
-      if (room.host) buttons.push({ label: 'Back to lobby', primary: true, on: () => this.backToRoom() } as { label: string; on: () => void; primary?: boolean });
-      this.setModal(endScreen(g.world, g.human, won, { rematch: () => undefined, newMap: () => undefined, quit: () => this.leaveRoom() }, { names, buttons, note: room.host ? undefined : 'The host can bring everyone back to the lobby.' }));
+      this.endEl = endScreen(g.world, g.human, won, { rematch: () => undefined, newMap: () => undefined, quit: () => this.leaveRoom() }, { names, ...this.endNet(room) });
+      this.setModal(this.endEl);
       return;
     }
     this.setModal(

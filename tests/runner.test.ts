@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { epochFor, rankByLinks, rankOf, runnerScore, worthMoving, type MatchPeer, type NetMatch, type RttOf } from '../src/net/match';
+import { epochFor, OWNER_QUIET_AFTER_END_MS, rankByLinks, rankOf, runnerScore, worthMoving, type MatchPeer, type NetMatch, type RttOf } from '../src/net/match';
 import { nudgeWorld } from '../src/net/desync';
 import { play, wipe } from './rig';
 
@@ -453,5 +453,39 @@ describe('after the match (#233)', () => {
       expect(g.lobby.state!.phase).toBe('lobby');
       expect(g.lobby.mySeat).toBeGreaterThanOrEqual(0);
     }
+  });
+
+  it('a host frozen for good on the end screen hands over after the longer wait, and everyone agrees, the host too once back', () => {
+    const { matches, run, seats } = decided();
+    run(OWNER_QUIET_AFTER_END_MS + 3000, ['H']);
+    const b = seats.get('B')!;
+    for (const id of ['A', 'B', 'C']) expect(matches.get(id)!.ownerSeat).toBe(b);
+    run(3000);
+    expect(matches.get('H')!.ownerSeat).toBe(b);
+  });
+
+  it('a change of host after the end is in every page’s log, and the turns don’t pile up', () => {
+    const { matches, run, quit } = decided();
+    quit('H');
+    run(20_000);
+    const b = matches.get('B')!.session.localSeat;
+    for (const id of ['A', 'C']) {
+      const s = matches.get(id)!.session;
+      expect(s.ctrlLog.some((e) => e.ctrl.k === 'owner' && e.ctrl.seat === b && e.tick > s.world.tick)).toBe(true);
+      expect(s.buffered).toBeLessThan(20);
+    }
+  });
+
+  it('the runner goes after the end, then the host: whoever runs it next takes the turns over, and everyone agrees who hosts', () => {
+    const { matches, run, quit } = decided();
+    run(2000);
+    quit('B');
+    run(5000);
+    quit('H');
+    run(5000);
+    const owners = ['A', 'C'].map((id) => matches.get(id)!.ownerSeat);
+    expect(owners[0]).toBe(owners[1]);
+    expect(owners[0]).not.toBe(-1);
+    expect(['A', 'C'].filter((id) => matches.get(id)!.host)).toHaveLength(1);
   });
 });

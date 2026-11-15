@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { epochFor, rankByLinks, rankOf, runnerScore, worthMoving, type MatchPeer, type NetMatch, type RttOf } from '../src/net/match';
+import { epochFor, OWNER_QUIET_AFTER_END_MS, rankByLinks, rankOf, runnerScore, worthMoving, type MatchPeer, type NetMatch, type RttOf } from '../src/net/match';
 import { nudgeWorld } from '../src/net/desync';
-import { play } from './rig';
+import { play, wipe } from './rig';
 
 /**
  * Who runs the match (#190): the sequencer moves to the best-placed player
@@ -395,5 +395,97 @@ describe('moving the sequencer (#190)', () => {
     r.run(20_000);
     expect(r.matches.get('A')!.runner).toBe(true);
     expect([...r.matches.values()].filter((m) => m.runner).length).toBe(1);
+  });
+});
+
+/**
+ * After the match (#233): the match is decided, everyone sits on the end
+ * screen, and the host is still the room's. Hosting mustn't split there:
+ * a change of host closed after the end has to reach everyone, and a host
+ * only gone quiet on the end screen keeps it.
+ */
+describe('after the match (#233)', () => {
+  /** uneven(), B runs it; at tick 200, everyone but H is wiped out on every page, and H wins */
+  function decided() {
+    const r = uneven();
+    const seats = new Map([...r.matches].map(([id, m]) => [id, m.session.localSeat]));
+    const losers = ['A', 'B', 'C'].map((id) => seats.get(id)!);
+    for (const m of r.matches.values()) m.session.beforeStep = (t, w) => t === 200 && losers.forEach((s) => wipe(w, s));
+    r.run(20_000);
+    for (const m of r.matches.values()) expect(m.session.world.over).toBe(true);
+    expect(r.matches.get('B')!.runner).toBe(true);
+    return { ...r, seats };
+  }
+
+  it('a host gone quiet on the end screen stays host, on every page', () => {
+    const { matches, run, seats } = decided();
+    run(8000, ['H']);
+    run(2000);
+    for (const m of matches.values()) expect(m.ownerSeat).toBe(seats.get('H'));
+    expect(matches.get('B')!.host).toBe(false);
+  });
+
+  it('a host who leaves after the end: everyone hears who hosts now', () => {
+    const { matches, run, quit } = decided();
+    const owners = new Map<string, number[]>();
+    for (const id of ['A', 'C']) {
+      owners.set(id, []);
+      matches.get(id)!.events.onOwner = (seat) => owners.get(id)!.push(seat);
+    }
+    quit('H');
+    run(3000);
+    const b = matches.get('B')!;
+    expect(b.host).toBe(true);
+    for (const id of ['A', 'C']) {
+      expect(matches.get(id)!.ownerSeat).toBe(b.session.localSeat);
+      expect(owners.get(id)).toEqual([b.session.localSeat]);
+    }
+  });
+
+  it('the host brings everyone back to the lobby', () => {
+    const { run, h, gs } = decided();
+    const phases = new Map(gs.map((g) => [g.id, [] as string[]]));
+    for (const g of gs) g.lobby.onChange = (s) => phases.get(g.id)!.push(s.phase);
+    h.lobby.backToLobby();
+    run(500);
+    for (const g of gs) {
+      expect(phases.get(g.id)).toContain('lobby');
+      expect(g.lobby.state!.phase).toBe('lobby');
+      expect(g.lobby.mySeat).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('a host frozen for good on the end screen hands over after the longer wait, and everyone agrees, the host too once back', () => {
+    const { matches, run, seats } = decided();
+    run(OWNER_QUIET_AFTER_END_MS + 3000, ['H']);
+    const b = seats.get('B')!;
+    for (const id of ['A', 'B', 'C']) expect(matches.get(id)!.ownerSeat).toBe(b);
+    run(3000);
+    expect(matches.get('H')!.ownerSeat).toBe(b);
+  });
+
+  it('a change of host after the end is in every page’s log, and the turns don’t pile up', () => {
+    const { matches, run, quit } = decided();
+    quit('H');
+    run(20_000);
+    const b = matches.get('B')!.session.localSeat;
+    for (const id of ['A', 'C']) {
+      const s = matches.get(id)!.session;
+      expect(s.ctrlLog.some((e) => e.ctrl.k === 'owner' && e.ctrl.seat === b && e.tick > s.world.tick)).toBe(true);
+      expect(s.buffered).toBeLessThan(20);
+    }
+  });
+
+  it('the runner goes after the end, then the host: whoever runs it next takes the turns over, and everyone agrees who hosts', () => {
+    const { matches, run, quit } = decided();
+    run(2000);
+    quit('B');
+    run(5000);
+    quit('H');
+    run(5000);
+    const owners = ['A', 'C'].map((id) => matches.get(id)!.ownerSeat);
+    expect(owners[0]).toBe(owners[1]);
+    expect(owners[0]).not.toBe(-1);
+    expect(['A', 'C'].filter((id) => matches.get(id)!.host)).toHaveLength(1);
   });
 });

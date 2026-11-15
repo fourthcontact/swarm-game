@@ -314,4 +314,44 @@ describe('jitter buffer (#198)', () => {
     f.s.setFixedBuffer(1);
     expect(f.s.target).toBe(1);
   });
+
+  it('after the end (#233): turns are still taken for their ctrls, in history and the log; a handover takes back the unconfirmed ones and reads their replacements', () => {
+    const s = setup([0]);
+    const { clock, seq, nets } = table(s, [0]);
+    const net = nets[0];
+    const owners: [number, number][] = [];
+    net.onCtrl = (t, c) => c.k === 'owner' && owners.push([t, c.seat]);
+    let f = 0;
+    const run = (frames: number) => {
+      for (const end = f + frames; f < end; f++) {
+        clock.now = (f + 1) * DT_MS + 1;
+        seq.update();
+        net.update(DT);
+        tidy(net.world);
+      }
+    };
+    run(60);
+    net.world.over = true; // decided: nothing steps from here
+    const endTick = net.world.tick;
+    run(10);
+    seq.addCtrl({ k: 'owner', seat: 0 });
+    run(30);
+    expect(net.world.tick).toBe(endTick);
+    const read = owners.at(-1)![0];
+    expect(read).toBeGreaterThan(endTick);
+    expect(net.ctrlLog.some((e) => e.tick === read && e.ctrl.k === 'owner')).toBe(true);
+    // taken turns move to the history: nothing piles up, and the log stays whole
+    expect(net.buffered).toBeLessThan(5);
+    const h = net.closedTurns();
+    expect(h.first + h.turns.length - 1).toBeGreaterThanOrEqual(read);
+    // a new sequencer takes over from before that turn: ours past it were never confirmed, and its own are read instead
+    const next = read - 2;
+    net.follow('host2', 9, next);
+    expect(net.ctrlLog.some((e) => e.tick >= next)).toBe(false);
+    expect(net.closedTurns().turns.length).toBe(next - h.first);
+    net.absorb(next, [{ entries: [] }, { entries: [], ctrl: [{ k: 'owner', seat: 2 }] }]);
+    net.update(DT);
+    expect(owners.at(-1)).toEqual([next + 1, 2]);
+    expect(net.world.tick).toBe(endTick);
+  });
 });

@@ -9,6 +9,7 @@ import { nestIcon } from '../ui/nesticon';
 import { quickSetup } from './matchSetup';
 import { inArmy, UNIT_FEEDING, WILD_SWARM } from '../sim/world';
 import { queryRadius } from '../sim/spatial';
+import { defaultMods } from '../sim/mods';
 import type { TimedCommand } from './session';
 
 /**
@@ -110,6 +111,24 @@ const versus = (m: MapSpec, personality: 'turtler' | 'expander', energy = 0, pas
     { faction: 0, team: 0, human: true, energy },
     { faction: 1, team: 1, human: false, bot: { difficulty: 0, personality, passive }, unitCap, prod },
   ],
+});
+
+/**
+ * The first missions only teach moving and capturing, so at match pace they
+ * drag (#207): every player's dots move faster and capture faster there. Set
+ * through faction mods at setup, so the sim stays deterministic.
+ */
+export const BRISK = { speed: 1.5, capture: 2 };
+
+const brisk = (setup: MatchSetup): MatchSetup => ({
+  ...setup,
+  players: setup.players.map((p) => {
+    const mods = p.mods ?? defaultMods();
+    return {
+      ...p,
+      mods: { ...mods, captureRate: mods.captureRate * BRISK.capture, kind: mods.kind.map((k) => ({ ...k, speed: k.speed * BRISK.speed })) },
+    };
+  }),
 });
 
 // ---- step checks -------------------------------------------------------------
@@ -284,7 +303,7 @@ export const MISSIONS: Mission[] = [
     teaches: 'Select your dots, send them, and capture nests.',
     learned: ['Select dots, then give them an order.', 'Move as one group: gather your dots, then send them together.', 'Nests you capture make more dots.'],
     locked: ALL_POWERS,
-    setup: () => solo(map([nest(170, 340, NestType.Hive, 0, 12), nest(480, 300, NestType.Hive, -1, 3), nest(820, 400, NestType.Hive, -1, 6)])),
+    setup: () => brisk(solo(map([nest(170, 340, NestType.Hive, 0, 12), nest(480, 300, NestType.Hive, -1, 3), nest(820, 400, NestType.Hive, -1, 6)]))),
     steps: [
       {
         text: {
@@ -319,10 +338,12 @@ export const MISSIONS: Mission[] = [
     ],
     locked: ALL_POWERS,
     setup: () =>
-      solo(
-        map(
-          [nest(160, 340, NestType.Hive, 0, 12), nest(470, 180, NestType.Forge, -1, 7), nest(560, 500, NestType.Hive, -1, 5), nest(900, 340, NestType.Spire, -1, 10)],
-          { walls: [wall(700, 140, 700, 280), wall(700, 400, 700, 540)] },
+      brisk(
+        solo(
+          map(
+            [nest(160, 340, NestType.Hive, 0, 12), nest(470, 180, NestType.Forge, -1, 7), nest(560, 500, NestType.Hive, -1, 5), nest(900, 340, NestType.Spire, -1, 10)],
+            { walls: [wall(700, 140, 700, 280), wall(700, 400, 700, 540)] },
+          ),
         ),
       ),
     steps: [
@@ -380,23 +401,25 @@ export const MISSIONS: Mission[] = [
     ],
     locked: ['nova', 'upgrade', 'fortify', 'barrage', 'blink', 'lockdown'],
     setup: () =>
-      versus(
-        map(
-          [
-            nest(150, 340, NestType.Hive, 0, 14),
-            nest(950, 340, NestType.Hive, 1, 6),
-            nest(420, 170, NestType.Hive, -1, 4),
-            nest(420, 510, NestType.Forge, -1, 5),
-            nest(700, 340, NestType.Hive, -1, 6),
-          ],
-          { walls: [wall(560, 60, 560, 250), wall(560, 430, 560, 620)] },
+      brisk(
+        versus(
+          map(
+            [
+              nest(150, 340, NestType.Hive, 0, 14),
+              nest(950, 340, NestType.Hive, 1, 6),
+              nest(420, 170, NestType.Hive, -1, 4),
+              nest(420, 510, NestType.Forge, -1, 5),
+              nest(700, 340, NestType.Hive, -1, 6),
+            ],
+            { walls: [wall(560, 60, 560, 250), wall(560, 430, 560, 620)] },
+          ),
+          'turtler',
+          30,
+          // A lesson, not a race: it defends but never comes for your nests,
+          // and stays small however long you take.
+          true,
+          14,
         ),
-        'turtler',
-        30,
-        // A lesson, not a race: it defends but never comes for your nests,
-        // and stays small however long you take.
-        true,
-        14,
       ),
     steps: [
       {

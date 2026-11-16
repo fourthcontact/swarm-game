@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { loadProgress, MISSIONS, MissionRun, missionUnlocked, type Lock } from '../src/game/tutorial';
+import { BRISK, loadProgress, MISSIONS, MissionRun, missionUnlocked, type Lock } from '../src/game/tutorial';
 import type { TimedCommand } from '../src/game/session';
 import { applyCommand, hasPower, type Command } from '../src/sim/commands';
 import { NEUTRAL, POWER, TICK_HZ, UNIT_STATS, UPGRADE_COST, UPGRADE_PICK_RADIUS } from '../src/sim/constants';
@@ -184,6 +184,18 @@ describe('tutorial pacing', () => {
     }
     expect(seen).toBeGreaterThan(start);
     expect((seen - start) / TICK_HZ).toBeLessThan(8);
+  });
+});
+
+describe('brisk first missions (#207)', () => {
+  it('missions 1 to 3 move and capture faster for every player; the rest play at match pace', () => {
+    MISSIONS.forEach((m, i) => {
+      const w = createWorld(m.setup());
+      for (const f of w.factions.slice(0, m.setup().players.length)) {
+        expect(f.mods.captureRate).toBe(i < 3 ? BRISK.capture : 1);
+        for (const k of f.mods.kind) expect(k.speed).toBe(i < 3 ? BRISK.speed : 1);
+      }
+    });
   });
 });
 

@@ -50,37 +50,37 @@ describe('match types (#222)', () => {
     expect(s.domShare).toBeUndefined();
   });
 
-  it('Domination: one key nest more than the players (#232)', () => {
+  it('Domination: one key nest per player (#232)', () => {
     const four = buildSetup(prefs({ mode: 'domination' }), 'seed');
-    expect(four.keys).toBe(5);
+    expect(four.keys).toBe(4);
     expect(four.domShare).toBe(DOMINATION_SHARE);
     const three = buildSetup(prefs({ mode: 'domination', bots: prefs().bots.slice(0, 2) }), 'seed');
-    expect(three.keys).toBe(4);
+    expect(three.keys).toBe(3);
     const duel = buildSetup(prefs({ mode: 'domination', bots: prefs().bots.slice(0, 1) }), 'seed');
-    expect(duel.keys).toBe(3);
-    // Players, not sides: a 2v2 has five.
+    expect(duel.keys).toBe(2);
+    // Players, not sides: a 2v2 has four.
     const teams = buildSetup(prefs({ mode: 'domination', teams: true, bots: prefs().bots.map((b, i) => ({ ...b, team: i === 0 ? 0 : 1 })) }), 'seed');
-    expect(teams.keys).toBe(5);
-    expect(createWorld(four).keys).toHaveLength(5);
+    expect(teams.keys).toBe(4);
+    expect(createWorld(four).keys).toHaveLength(4);
     // never more than MAX_KEYS, however many seats there may be
     expect(skirmishKeys(MAX_KEYS + 3)).toBe(MAX_KEYS);
   });
 
   it('Domination: the score to win counts at most KEYS.maxScored key nests (#232)', () => {
-    const duel = createWorld(buildSetup(prefs({ mode: 'domination', bots: prefs().bots.slice(0, 1) }), 'seed'));
-    expect(keyTarget(duel)).toBe(3 * KEYS.points);
-    const four = createWorld(buildSetup(prefs({ mode: 'domination' }), 'seed'));
-    expect(four.keys).toHaveLength(5);
-    expect(keyTarget(four)).toBe(KEYS.maxScored * KEYS.points);
-    // Holding every key nest wins sooner than KEYS.points, and the sim agrees.
-    four.keySealUntil = 0;
-    const me = four.factions.findIndex((f) => f.human);
-    for (const k of four.keys) Object.assign(four.nests[k], { owner: me, controller: me, control: 1, garrison: 0 });
-    for (let s = four.n - 1; s >= 0; s--) if (four.alive[s]) removeUnit(four, s);
+    const three = createWorld(buildSetup(prefs({ mode: 'domination', bots: prefs().bots.slice(0, 2) }), 'seed'));
+    expect(keyTarget(three)).toBe(3 * KEYS.points);
+    const five = createWorld(buildSetup(prefs({ mode: 'domination', bots: prefs().bots.concat([{ ...prefs().bots[0], faction: 4, team: 4 }]) }), 'seed'));
+    expect(five.keys).toHaveLength(5);
+    expect(keyTarget(five)).toBe(KEYS.maxScored * KEYS.points);
+    // Five players, five key nests: holding them all wins sooner than KEYS.points, and the sim agrees.
+    five.keySealUntil = 0;
+    const me = five.factions.findIndex((f) => f.human);
+    for (const k of five.keys) Object.assign(five.nests[k], { owner: me, controller: me, control: 1, garrison: 0 });
+    for (let s = five.n - 1; s >= 0; s--) if (five.alive[s]) removeUnit(five, s);
     let t = 0;
-    for (; t < KEYS.points && !four.over; t++) step(four, []);
-    expect(four.over).toBe(true);
-    expect(four.winReason).toBe('domination');
+    for (; t < KEYS.points && !five.over; t++) step(five, []);
+    expect(five.over).toBe(true);
+    expect(five.winReason).toBe('domination');
     expect(t).toBeLessThan(KEYS.points);
   });
 
@@ -93,7 +93,7 @@ describe('match types (#222)', () => {
           const p = prefs({ mode: 'domination', size, bots: bots(n - 1) });
           if (prefsSizeProblem(p)) continue;
           const w = createWorld(buildSetup(p, `fit-${seed}`));
-          expect(w.keys).toHaveLength(n + 1);
+          expect(w.keys).toHaveLength(n);
           const ks = w.keys.map((k) => w.nests[k]);
           let gap = Infinity;
           for (const a of ks) for (const b of ks) if (a !== b) gap = Math.min(gap, Math.hypot(a.x - b.x, a.y - b.y));
@@ -233,7 +233,7 @@ describe('match types in a room (#222)', () => {
   });
 
   it('Domination and Stronghold carry into the match', () => {
-    expect(buildNetSetup(room({ mode: 'domination' })).keys).toBe(4);
+    expect(buildNetSetup(room({ mode: 'domination' })).keys).toBe(3);
     const s = buildNetSetup(room({ mode: 'stronghold', holder: 2 }));
     expect(s.stronghold).toMatchObject({ player: 2 });
     expect(s.players[2].bot!.citadel).toBe(true);

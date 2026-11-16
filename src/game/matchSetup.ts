@@ -169,11 +169,10 @@ export const keyNests = (rivals: number) => (rivals >= 3 ? 3 : 2);
 /** The most key nests a skirmish or room's Domination has (#232). */
 export const MAX_KEYS = 7;
 /**
- * Key nests in a skirmish or room's Domination (#232): one more than the
- * players, so there's always one more to fight over than anyone can sit on,
- * up to MAX_KEYS. The score to win grows with them, to KEYS.maxScored's worth.
+ * Key nests in a skirmish or room's Domination (#232): one per player, up to
+ * MAX_KEYS. The score to win grows with them, to KEYS.maxScored's worth.
  */
-export const skirmishKeys = (players: number) => Math.min(players + 1, MAX_KEYS);
+export const skirmishKeys = (players: number) => Math.min(players, MAX_KEYS);
 /** Domination's nest share, with key nests only the HUD's guide (#87). */
 export const DOMINATION_SHARE = 0.5;
 /** A stronghold's holder starts with three nests: production in its stronghold (#100). */

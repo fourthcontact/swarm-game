@@ -290,7 +290,7 @@ export function keyScoring(w: World, id: number): boolean {
 }
 
 /** Key nests team `t` holds fully and uncontested: what it scores per tick. */
-function keyRate(w: World, t: number): number {
+export function keyRate(w: World, t: number): number {
   let rate = 0;
   for (const k of w.keys) if (keyScoring(w, k) && keyTeam(w, k) === t) rate++;
   return rate;

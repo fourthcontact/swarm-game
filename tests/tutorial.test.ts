@@ -201,7 +201,6 @@ describe('brisk first missions (#207)', () => {
         const f = w.factions[p.faction].mods;
         const x = p.human ? 1 : 0;
         expect(f.captureRate).toBe(x ? BRISK.capture : 1);
-        expect(f.controlDrift).toBe(x ? BRISK.capture : 1);
         expect(f.spawnRate).toBe(x ? BRISK.spawn : 1);
         for (const k of f.kind) expect(k.speed).toBe(x ? BRISK.speed : 1);
       }
@@ -219,7 +218,7 @@ describe('brisk first missions (#207)', () => {
     expect(me.kind[0].speed).toBeCloseTo(1.1 * BRISK.speed);
   });
 
-  it('an unfinished capture drains at the same brisk pace it was made at', () => {
+  it('an unfinished capture still drains at match pace, in the beginner\'s favour', () => {
     const drained = (fast: boolean) => {
       const base = MISSIONS[3].setup();
       const setup: MatchSetup = {
@@ -236,7 +235,7 @@ describe('brisk first missions (#207)', () => {
       return 0.8 - n.control;
     };
     expect(drained(false)).toBeGreaterThan(0);
-    expect(drained(true)).toBeCloseTo(drained(false) * BRISK.capture);
+    expect(drained(true)).toBeCloseTo(drained(false));
   });
 });
 

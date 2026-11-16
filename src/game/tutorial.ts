@@ -118,9 +118,10 @@ const versus = (m: MapSpec, personality: 'turtler' | 'expander', energy = 0, pas
 /**
  * The first missions only teach moving, capturing and a first fight, so at
  * match pace they drag (#207). There the player's dots move, capture and spawn
- * faster, and an unfinished capture drains (or a nest recovers) at the same
- * pace. Bots keep match pace. Set through faction mods at setup, so the sim
- * stays deterministic.
+ * faster; bots keep match pace. With nobody on a nest, control still drifts at
+ * match pace, so a half-done capture lasts longer than it was quick to make: in
+ * the beginner's favour. Set through faction mods at setup, so the sim stays
+ * deterministic.
  */
 export const BRISK = { speed: 1.5, capture: 2, spawn: 1.5 };
 
@@ -134,7 +135,6 @@ export const brisk = (setup: MatchSetup): MatchSetup => ({
       mods: {
         ...m,
         captureRate: m.captureRate * BRISK.capture,
-        controlDrift: m.controlDrift * BRISK.capture,
         spawnRate: m.spawnRate * BRISK.spawn,
         kind: m.kind.map((k) => ({ ...k, speed: k.speed * BRISK.speed })),
       },

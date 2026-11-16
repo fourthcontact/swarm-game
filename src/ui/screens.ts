@@ -229,13 +229,12 @@ export function tutorialMenu(p: TutorialProgress, h: { play: (i: number) => void
   return m;
 }
 
-/** The first mission at match pace: the one after the last sped-up mission (#207). */
-const firstAtPace = MISSIONS.length - [...MISSIONS].reverse().findIndex((m) => m.brisk);
-
 /** Sped-up missions say so, and so does the first one back at match speed (#207), so the change of pace isn't a surprise. */
-function paceNote(ms: Mission, i: number): string {
-  if (ms.brisk) return '<p class="pace">⏩ To save you time, your dots move, capture and spawn faster here than in a real match.</p>';
-  if (i === firstAtPace) return '<p class="pace">This mission plays at <b>real match speed</b>, slower than the first missions.</p>';
+/** `next`: on the debrief, about the mission that comes next. */
+function paceNote(i: number, next = false): string {
+  const ms = MISSIONS[i];
+  if (ms.brisk) return `<p class="pace">⏩ To save you time, your dots move, capture and spawn faster ${next ? 'there' : 'here'} than in a real match.</p>`;
+  if (i > 0 && MISSIONS[i - 1].brisk) return `<p class="pace">${next ? 'It' : 'This mission'} plays at <b>real match speed</b>, slower than the first missions.</p>`;
   return '';
 }
 
@@ -246,7 +245,7 @@ export function missionBriefing(ms: Mission, i: number, h: { start: () => void; 
         <small class="eyebrow">Mission ${i + 1} of ${MISSIONS.length}</small>
         <h2>${ms.title}</h2>
         <p>${ms.teaches}</p>
-        ${paceNote(ms, i)}
+        ${paceNote(i)}
         <p class="hint">Follow the instructions at the top of the screen. ${isMobile() ? 'Pause' : 'Esc pauses'} any time.</p>
         <div class="row end"><button data-a="back">Back</button><button class="primary" data-a="start">Start</button></div>
       </div>
@@ -282,6 +281,7 @@ export function missionDebrief(
         <h2>${won ? (real ? 'Graduated' : 'Mission complete') : 'Defeated'}</h2>
         ${body}
         ${!last ? `<p class="hint">Next: ${MISSIONS[i + 1].title}. ${MISSIONS[i + 1].teaches}</p>` : ''}
+        ${!last && !!MISSIONS[i + 1].brisk !== !!ms.brisk ? paceNote(i + 1, true) : ''}
         <div class="row end">
           ${won && real ? '' : '<button data-a="menu">Main menu</button>'}
           ${won ? '' : `<button data-a="retry"${real ? ' class="primary"' : ''}>Retry</button>`}

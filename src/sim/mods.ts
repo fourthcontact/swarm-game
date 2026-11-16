@@ -58,8 +58,6 @@ export interface FactionMods {
   energyRate: number;
   /** capture speed at every nest */
   captureRate: number;
-  /** how fast a nest's control drifts back with nobody on it: your unfinished capture decaying, your damaged nest recovering (tutorial pace, #207) */
-  controlDrift: number;
   // Power variants with a rule of their own (#60); one per power, kept so by the campaign.
   /** Barrage Cluster: three small shells */
   cluster: boolean;
@@ -125,7 +123,6 @@ export function defaultMods(): FactionMods {
     crystalRate: 1,
     energyRate: 1,
     captureRate: 1,
-    controlDrift: 1,
     cluster: false,
     scorch: false,
     implode: false,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { NEST_RADIUS } from '../src/sim/constants';
-import { Terrain, capsuleDist, segDist2, type FieldSpec } from '../src/sim/terrain';
+import { T_RIFT, Terrain, capsuleDist, segDist2, type FieldSpec } from '../src/sim/terrain';
 import { expansionSpread, generateMap, groundHeight, MAP_FORMS, MAP_LAYOUTS, type MapForm, type MapSize, type MapSpec } from '../src/sim/mapgen';
 import { fbm, ridged, vnoise } from '../src/sim/mathx';
 
@@ -194,6 +194,21 @@ describe('noise terrain (#98)', () => {
         const t = new Terrain(m.terrain, m.width, m.height);
         const points = [...m.events.swarmSpawns, ...m.events.dropSpots, ...m.events.colossusPaths.flat()];
         for (const cap of m.nests.slice(0, 3)) for (const [x, y] of points) expect(Number.isFinite(t.pathDist(x, y, cap.x, cap.y, 0)), `${form} ${s}`).toBe(true);
+      }
+    }
+  });
+
+  it('wild swarms come in on dry ground near the edge, clear of the nests, even on a rift sea (#212)', () => {
+    for (const form of ['islands', 'river', 'classic'] as const) {
+      for (let s = 0; s < 12; s++) {
+        const m = generateMap({ seed: 900 + s, size: (['small', 'medium', 'large'] as const)[s % 3], players: 2 + (s % 4), form, terrain: s % 2 ? 'heavy' : 'standard', events: 'normal' });
+        const t = new Terrain(m.terrain, m.width, m.height);
+        for (const [x, y] of m.events.swarmSpawns) {
+          const at = `${form} ${s} (${x | 0}, ${y | 0})`;
+          for (let r = 0; r <= 20; r += 5) for (let k = 0; k < 16; k++) expect(t.flagsAt(x + Math.cos((k * Math.PI) / 8) * r, y + Math.sin((k * Math.PI) / 8) * r) & T_RIFT, at).toBe(0);
+          expect(Math.min(x, y, m.width - x, m.height - y), at).toBeLessThan(0.25 * Math.min(m.width, m.height));
+          for (const n of m.nests) expect(Math.hypot(n.x - x, n.y - y), at).toBeGreaterThan(NEST_RADIUS[n.type] + 40);
+        }
       }
     }
   });

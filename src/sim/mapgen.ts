@@ -2,7 +2,7 @@ import { fortify, type FortressInfo } from './fortify';
 import { KEYS, NEST_RADIUS, NestType, TERRAIN } from './constants';
 import { PI, TAU, datan2, dcos, dsin, fbm, ridged } from './mathx';
 import { Rng } from './rng';
-import { TILE, Terrain, capsuleDist, emptyTerrain, type Capsule, type CaveSpec, type FieldSpec, type TerrainSpec } from './terrain';
+import { T_RIFT, TILE, Terrain, capsuleDist, emptyTerrain, type Capsule, type CaveSpec, type FieldSpec, type TerrainSpec } from './terrain';
 
 export type MapSize = 'small' | 'medium' | 'large';
 
@@ -698,10 +698,41 @@ function generateEvents(rng: Rng, params: EventParams, terrain: TerrainSpec, f: 
     }
     return t.freePoint(cap0.x, cap0.y, clear);
   };
-  // Swarm entries: one per sector border, pushed to the map edge.
+  // Dry ground (#212): no rift under a swarm's spread, or it burns up before it reaches the fight.
+  const spread = 45;
+  const dry = (x: number, y: number): boolean => {
+    if (t.flagsAt(x, y) & T_RIFT) return false;
+    for (const r of [spread / 2, spread]) {
+      for (let k = 0; k < 8; k++) if (t.flagsAt(x + dcos((k * TAU) / 8) * r, y + dsin((k * TAU) / 8) * r) & T_RIFT) return false;
+    }
+    return true;
+  };
+  // Clear of the nests too, so a swarm never lands on a garrison (islands are mostly nests).
+  const offNests = (x: number, y: number, gap: number) => nests.every((n) => (n.x - x) ** 2 + (n.y - y) ** 2 >= (NEST_RADIUS[n.type] + gap) ** 2);
+  // The nearest dry, reachable point to (x, y), in rings outward; null if none.
+  const dryNear = (x: number, y: number, clear: number): [number, number] | null => {
+    // Near the edge first, keeping well clear of the nests; then closer to them; then anywhere.
+    const m = Math.min(w, h);
+    for (const [gap, ringMax] of [[110, 0.2 * m], [60, 0.2 * m], [110, m / 2], [60, m / 2]]) {
+      for (let r = 0; r <= ringMax; r += 30) {
+        const n = r === 0 ? 1 : Math.max(8, Math.round((TAU * r) / 40));
+        for (let k = 0; k < n; k++) {
+          const qx = x + dcos((k * TAU) / n) * r, qy = y + dsin((k * TAU) / n) * r;
+          if (qx < 30 || qy < 30 || qx > w - 30 || qy > h - 30 || !dry(qx, qy) || !offNests(qx, qy, gap)) continue;
+          const p = t.freePoint(qx, qy, clear);
+          if (dry(p[0], p[1]) && offNests(p[0], p[1], gap) && Number.isFinite(t.pathDist(p[0], p[1], cap0.x, cap0.y, 0))) return p;
+        }
+      }
+    }
+    return null;
+  };
+  const hasRift = terrain.fields.some((c) => c.kind === 'rift');
+  // Swarm entries: one per sector border, pushed to the map edge (or the nearest dry ground to it).
   for (let k = 0; k < P; k++) {
     const [x, y] = pos(1.08, base + (k + 0.5) * sector);
-    spec.swarmSpawns.push(reachable(clamp(x, 30, w - 30), clamp(y, 30, h - 30), 20));
+    const ex = clamp(x, 30, w - 30), ey = clamp(y, 30, h - 30);
+    const p = reachable(ex, ey, 20);
+    spec.swarmSpawns.push(hasRift && !dry(p[0], p[1]) ? (dryNear(ex, ey, 20) ?? p) : p);
   }
   // The Colossus enters at one border and leaves by the one across the map.
   const mid = reachable(w / 2, h / 2, 30);
@@ -1723,6 +1754,17 @@ function seaOfRift(spec: TerrainSpec, f: Frame, scale: number): void {
       const [x1, y1] = at(isl[e.i], k * sector), [x2, y2] = at(isl[e.j], (k + (e.cross ? 1 : 0)) * sector);
       bridges.push({ x1, y1, x2, y2, r: half });
     }
+  }
+  // Landings (#212): a dry strip from each sector border's edge, where wild swarms
+  // come in, to the nearest island, so they reach the map without wading the sea.
+  // Wider than a bridge: a whole swarm lands on it.
+  const near = isl.reduce((b, o) => (islandDist(o, 1.05, sector / 2, sector) - o.R < islandDist(b, 1.05, sector / 2, sector) - b.R ? o : b));
+  for (let k = 0; k < P; k++) {
+    const a = base + (k + 0.5) * sector;
+    const [x1, y1] = pos(1.3, a), [ex, ey] = pos(1.05, a);
+    const [p, q] = [at(near, k * sector), at(near, (k + 1) * sector)];
+    const [x2, y2] = (p[0] - ex) ** 2 + (p[1] - ey) ** 2 <= (q[0] - ex) ** 2 + (q[1] - ey) ** 2 ? p : q;
+    bridges.push({ x1, y1, x2, y2, r: Math.max(half, 48) });
   }
   // The sea: every cell off the islands, the bridges, the nests and the crystals.
   const cell = 30;

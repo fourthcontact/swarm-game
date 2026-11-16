@@ -76,6 +76,8 @@ export interface Mission {
   locked: Lock[];
   /** a real match (#147): the graduation 1v1. It can't be skipped, and finishing it graduates you */
   real?: true;
+  /** dots move and capture faster than in a match, to save time on the basics (#207); the briefing says so */
+  brisk?: true;
   /** hold the game for a few seconds whenever the instruction changes, so it can be read first */
   readPause?: boolean;
   steps: Step[];
@@ -303,7 +305,8 @@ export const MISSIONS: Mission[] = [
     teaches: 'Select your dots, send them, and capture nests.',
     learned: ['Select dots, then give them an order.', 'Move as one group: gather your dots, then send them together.', 'Nests you capture make more dots.'],
     locked: ALL_POWERS,
-    setup: () => brisk(solo(map([nest(170, 340, NestType.Hive, 0, 12), nest(480, 300, NestType.Hive, -1, 3), nest(820, 400, NestType.Hive, -1, 6)]))),
+    brisk: true,
+    setup: () => solo(map([nest(170, 340, NestType.Hive, 0, 12), nest(480, 300, NestType.Hive, -1, 3), nest(820, 400, NestType.Hive, -1, 6)])),
     steps: [
       {
         text: {
@@ -337,13 +340,12 @@ export const MISSIONS: Mission[] = [
       'Swarmers beat Spears, Spears beat Shields, Shields beat Swarmers.',
     ],
     locked: ALL_POWERS,
+    brisk: true,
     setup: () =>
-      brisk(
-        solo(
-          map(
-            [nest(160, 340, NestType.Hive, 0, 12), nest(470, 180, NestType.Forge, -1, 7), nest(560, 500, NestType.Hive, -1, 5), nest(900, 340, NestType.Spire, -1, 10)],
-            { walls: [wall(700, 140, 700, 280), wall(700, 400, 700, 540)] },
-          ),
+      solo(
+        map(
+          [nest(160, 340, NestType.Hive, 0, 12), nest(470, 180, NestType.Forge, -1, 7), nest(560, 500, NestType.Hive, -1, 5), nest(900, 340, NestType.Spire, -1, 10)],
+          { walls: [wall(700, 140, 700, 280), wall(700, 400, 700, 540)] },
         ),
       ),
     steps: [
@@ -400,26 +402,25 @@ export const MISSIONS: Mission[] = [
       'A player with no nests and no dots is out.',
     ],
     locked: ['nova', 'upgrade', 'fortify', 'barrage', 'blink', 'lockdown'],
+    brisk: true,
     setup: () =>
-      brisk(
-        versus(
-          map(
-            [
-              nest(150, 340, NestType.Hive, 0, 14),
-              nest(950, 340, NestType.Hive, 1, 6),
-              nest(420, 170, NestType.Hive, -1, 4),
-              nest(420, 510, NestType.Forge, -1, 5),
-              nest(700, 340, NestType.Hive, -1, 6),
-            ],
-            { walls: [wall(560, 60, 560, 250), wall(560, 430, 560, 620)] },
-          ),
-          'turtler',
-          30,
-          // A lesson, not a race: it defends but never comes for your nests,
-          // and stays small however long you take.
-          true,
-          14,
+      versus(
+        map(
+          [
+            nest(150, 340, NestType.Hive, 0, 14),
+            nest(950, 340, NestType.Hive, 1, 6),
+            nest(420, 170, NestType.Hive, -1, 4),
+            nest(420, 510, NestType.Forge, -1, 5),
+            nest(700, 340, NestType.Hive, -1, 6),
+          ],
+          { walls: [wall(560, 60, 560, 250), wall(560, 430, 560, 620)] },
         ),
+        'turtler',
+        30,
+        // A lesson, not a race: it defends but never comes for your nests,
+        // and stays small however long you take.
+        true,
+        14,
       ),
     steps: [
       {
@@ -802,6 +803,13 @@ export const MISSIONS: Mission[] = [
     ],
   },
 ];
+
+// Sped-up missions (#207): one flag drives both the setup and the briefing's note.
+for (const m of MISSIONS) {
+  if (!m.brisk) continue;
+  const plain = m.setup;
+  m.setup = () => brisk(plain());
+}
 
 /** Advances through one mission's steps as the match plays. */
 export class MissionRun {

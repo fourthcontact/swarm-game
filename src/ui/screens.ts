@@ -229,6 +229,13 @@ export function tutorialMenu(p: TutorialProgress, h: { play: (i: number) => void
   return m;
 }
 
+/** Sped-up missions say so, and so does the first one back at match speed (#207), so the change of pace isn't a surprise. */
+function paceNote(ms: Mission, i: number): string {
+  if (ms.brisk) return '<p class="pace">⏩ To save you time, dots move and capture faster in the first missions than in a real match.</p>';
+  if (MISSIONS[i - 1]?.brisk) return '<p class="pace">From here on, dots move at <b>real match speed</b>: slower than in the first missions.</p>';
+  return '';
+}
+
 export function missionBriefing(ms: Mission, i: number, h: { start: () => void; back: () => void }): HTMLDivElement {
   const m = el(`
     <div class="screen modal">
@@ -236,6 +243,7 @@ export function missionBriefing(ms: Mission, i: number, h: { start: () => void; 
         <small class="eyebrow">Mission ${i + 1} of ${MISSIONS.length}</small>
         <h2>${ms.title}</h2>
         <p>${ms.teaches}</p>
+        ${paceNote(ms, i)}
         <p class="hint">Follow the instructions at the top of the screen. ${isMobile() ? 'Pause' : 'Esc pauses'} any time.</p>
         <div class="row end"><button data-a="back">Back</button><button class="primary" data-a="start">Start</button></div>
       </div>

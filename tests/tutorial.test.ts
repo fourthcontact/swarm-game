@@ -189,13 +189,15 @@ describe('tutorial pacing', () => {
 
 describe('brisk first missions (#207)', () => {
   it('missions 1 to 3 move and capture faster for every player; the rest play at match pace', () => {
-    MISSIONS.forEach((m, i) => {
+    expect(MISSIONS.map((m) => !!m.brisk)).toEqual(MISSIONS.map((_, i) => i < 3));
+    // The flag (which the briefing reads) and the sim's speeds always agree.
+    for (const m of MISSIONS) {
       const w = createWorld(m.setup());
       for (const f of w.factions.slice(0, m.setup().players.length)) {
-        expect(f.mods.captureRate).toBe(i < 3 ? BRISK.capture : 1);
-        for (const k of f.mods.kind) expect(k.speed).toBe(i < 3 ? BRISK.speed : 1);
+        expect(f.mods.captureRate).toBe(m.brisk ? BRISK.capture : 1);
+        for (const k of f.mods.kind) expect(k.speed).toBe(m.brisk ? BRISK.speed : 1);
       }
-    });
+    }
   });
 });
 

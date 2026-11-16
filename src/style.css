@@ -188,6 +188,7 @@ label small { text-transform: none; letter-spacing: 0; opacity: 0.7; }
 .controls dt { color: var(--accent); }
 .controls dd { margin: 0; color: #c6cceb; }
 
+.card.brief .pace { font-size: 13px; color: var(--accent); margin: 6px 0; }
 .howto-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 .nests { list-style: none; padding: 0; margin: 4px 0 8px; font-size: 14px; color: #c6cceb; }
 .nests li { display: flex; gap: 10px; align-items: center; margin: 6px 0; }

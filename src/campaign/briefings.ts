@@ -98,7 +98,7 @@ function domination(w: World): Step[] {
   const keys = [...w.keys];
   const seal = Math.round((w.keySealUntil - w.tick) / TICK_HZ);
   return [
-    tour('<b>Domination.</b> The ringed nests are the <b>key nests</b>, circled in gold on the map. Whoever holds them, uncontested, scores.', {
+    tour('<b>Domination.</b> The <b>key nests</b> are ringed in gold, with a gold diamond above them; the strip at the top shows who holds each. Whoever holds them, uncontested, scores.', {
       highlight: () => keys,
       focus: () => null,
     }),

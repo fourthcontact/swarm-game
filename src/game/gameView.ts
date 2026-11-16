@@ -5,11 +5,11 @@ import { Selection } from '../input/selection';
 import type { Camera } from '../render/camera';
 import type { Particles, Rings } from '../render/particles';
 import type { Renderer } from '../render/renderer';
-import { BOON_RGB, DROP_RGB as DROP_MARK, FERAL, drawWorld } from '../render/scene';
+import { BOON_RGB, DROP_RGB as DROP_MARK, FERAL, KEY_RGB, drawWorld } from '../render/scene';
 import { BLOOM_GLOW, BLOOM_RGB, bloomNestMask, growthTarget, type BloomView } from '../render/bloom';
 import { isAlly, possessive, teamName, verb } from '../ui/teams';
 import type { AudioEngine } from '../audio/engine';
-import { DAMAGE_VS, KEYS, dominationStatus, MAX_LEVEL, MAX_UNITS, TICK_HZ, NEST_NAMES, NEUTRAL, POWER, POWER_NEST, supplyCap, type MatchSetup, type NestPower } from '../sim/index';
+import { DAMAGE_VS, KEYS, dominationStatus, keyTeam, MAX_LEVEL, MAX_UNITS, TICK_HZ, NEST_NAMES, NEUTRAL, POWER, POWER_NEST, supplyCap, type MatchSetup, type NestPower } from '../sim/index';
 import { barrageLaunch, feedNeed, hasPower, novaRadius, powerBoost, siphonWait, surgeCost } from '../sim/commands';
 import { inArmy, type Nest, type World } from '../sim/world';
 import { placingOf, type Placing } from './standing';
@@ -74,6 +74,8 @@ export function rejectText(cmd: Command, why: OrderFail, blood: boolean): string
 /** The opening (#235): seconds on the whole map before the zoom in, and settled on home before GO. */
 const INTRO_HOLD = 0.4;
 const INTRO_SETTLE = 0.5;
+/** Off-screen key nests that get an edge arrow at once (#232): the nearest. */
+const KEY_ARROWS = 2;
 
 export class GameView {
   readonly session: Session;
@@ -400,6 +402,12 @@ export class GameView {
     this.beacon.update(time, !this.session.held && !this.session.paused && !this.session.syncing);
     if (n && this.beacon.pulse(time)) {
       this.s.rings.add({ x: n.x, y: n.y, r0: n.r * 1.3, r1: n.r * 3, dur: 0.9, c: FACTION_RGB[this.human] ?? WHITE, thick: 3 });
+      // Domination (#232): the key nests on screen ping in gold with it, so the opening shows what to fight for.
+      for (const k of this.world.keys) {
+        const kn = this.world.nests[k];
+        if (this.edgeOf(kn.x, kn.y)) continue;
+        this.s.rings.add({ x: kn.x, y: kn.y, r0: kn.r * 1.8, r1: kn.r * 3.4, dur: 0.9, c: KEY_RGB, thick: 3 });
+      }
     }
   }
 
@@ -562,12 +570,14 @@ export class GameView {
   private drawEdgeMarkers(time: number): void {
     const ev = this.world.events;
     const w = this.world;
-    const marks: [number, number, readonly number[]][] = [];
+    // [x, y, color, shape]: a triangle (3), or a key nest's diamond (4) so it can't pass for a drop
+    const marks: [number, number, readonly number[], number?][] = [];
     // A stronghold's citadel (#100), while it's still the goal.
     if (w.citadel >= 0 && w.nests[w.citadel].owner !== this.human) {
       const c = w.nests[w.citadel];
       marks.push([c.x, c.y, FACTION_RGB[this.warlord?.faction ?? c.owner] ?? WHITE]);
     }
+    for (const k of this.keyArrows()) marks.push([w.nests[k].x, w.nests[k].y, KEY_RGB, 4]);
     // Your home, at the start (#235).
     const you = this.youAt;
     if (you) marks.push([you.x, you.y, FACTION_RGB[this.human] ?? WHITE]);
@@ -589,13 +599,30 @@ export class GameView {
     }
     const { camera, renderer } = this.s;
     const pulse = 0.6 + 0.4 * Math.sin(time * 5);
-    for (const [x, y, c] of marks) {
+    for (const [x, y, c, shape = 3] of marks) {
       const e = this.edgeOf(x, y);
       if (!e) continue;
       const [wx, wy] = camera.toWorld(e.x, e.y);
-      // Triangle shape points "up" at rotation 0; turn it toward the target.
-      renderer.shape(true, wx, wy, (11 * renderer.dpr) / camera.zoom, 3, 0, -e.rot, 0.6, c, Math.round(230 * pulse));
+      // Both shapes point "up" at rotation 0; turn them toward the target.
+      renderer.shape(true, wx, wy, ((shape === 4 ? 14 : 11) * renderer.dpr) / camera.zoom, shape, 0, -e.rot, 0.6, c, Math.round(230 * pulse));
     }
+  }
+
+  /**
+   * Key nests to point at off screen (#232): once the seal opens, the
+   * KEY_ARROWS off-screen ones nearest the view's center that your side doesn't hold.
+   */
+  private keyArrows(): number[] {
+    const w = this.world;
+    if (!w.keys.length || w.keySealUntil > w.tick) return [];
+    const myTeam = this.human >= 0 ? w.teamOf[this.human] : -1;
+    const { camera } = this.s;
+    const [cx, cy] = camera.toWorld(camera.viewW / 2, camera.viewH / 2);
+    const d2 = (k: number) => (w.nests[k].x - cx) ** 2 + (w.nests[k].y - cy) ** 2;
+    return w.keys
+      .filter((k) => (keyTeam(w, k) < 0 || keyTeam(w, k) !== myTeam) && this.edgeOf(w.nests[k].x, w.nests[k].y))
+      .sort((a, b) => d2(a) - d2(b) || a - b)
+      .slice(0, KEY_ARROWS);
   }
 
   /**

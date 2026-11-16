@@ -646,7 +646,9 @@ export function generateMap(p: MapParams): MapSpec {
 /**
  * Key nests (#87): `count` neutral nests, each as far as it can be from the
  * nearest start (so nobody's natural expansion is one), at least KEYS.apart
- * from each other where the map has room. Their guards are KEYS.garrison times the usual.
+ * from each other. Where that doesn't fit them all (#232: up to seven), they're
+ * spread instead: each next one the nest farthest from every start and every
+ * key nest already picked. Their guards are KEYS.garrison times the usual.
  */
 function markKeys(spec: MapSpec, P: number, count: number): void {
   const caps = spec.nests.slice(0, P);
@@ -656,16 +658,26 @@ function markKeys(spec: MapSpec, P: number, count: number): void {
     .map((n, i) => ({ n, i, d: fromStarts(n) }))
     .filter((c) => c.n.player < 0)
     .sort((a, b) => b.d - a.d || a.i - b.i);
-  const picked: NestSpec[] = [];
-  // A crowded map may not fit them KEYS.apart apart: halve the gap until all are placed.
-  for (let apart = KEYS.apart; picked.length < count && apart >= 1; apart = Math.floor(apart / 2)) {
-    for (const c of pool) {
-      if (picked.length >= count) break;
-      if (c.n.key || picked.some((k) => d2(k, c.n) < apart * apart)) continue;
-      c.n.key = true;
-      c.n.garrison = Math.round(c.n.garrison * KEYS.garrison);
-      picked.push(c.n);
+  let picked: NestSpec[] = [];
+  for (const c of pool) {
+    if (picked.length >= count) break;
+    if (!picked.some((k) => d2(k, c.n) < KEYS.apart * KEYS.apart)) picked.push(c.n);
+  }
+  if (picked.length < count) {
+    // Spread them: farthest from every start and every key nest so far.
+    picked = [];
+    const near = pool.map((c) => c.d);
+    while (picked.length < Math.min(count, pool.length)) {
+      let best = -1;
+      for (let j = 0; j < pool.length; j++) if (!picked.includes(pool[j].n) && (best < 0 || near[j] > near[best])) best = j;
+      const k = pool[best].n;
+      picked.push(k);
+      pool.forEach((c, j) => (near[j] = Math.min(near[j], d2(c.n, k))));
     }
+  }
+  for (const k of picked) {
+    k.key = true;
+    k.garrison = Math.round(k.garrison * KEYS.garrison);
   }
 }
 

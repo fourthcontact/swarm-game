@@ -1,5 +1,5 @@
 import { expect } from 'vitest';
-import { loadPrefs, type SetupPrefs } from '../src/game/matchSetup';
+import { loadPrefs, SMALL_MAX_PLAYERS, type SetupPrefs } from '../src/game/matchSetup';
 import { COUNTDOWN_MS, GuestLobby, HostLobby, matchPeers, seatOf, type HostGo, type LobbyState, type RoomMode, type StartInfo } from '../src/net/lobby';
 import { NetMatch } from '../src/net/match';
 import { LOBBY_KINDS, LoopbackHub, MATCH_KINDS, Router, type LinkState, type Transport } from '../src/net/transport';
@@ -167,7 +167,9 @@ export function play(o: { botSecs?: 30 | 60 | 120; guests?: string[]; mobile?: s
   const rm = room();
   const mobile = new Set(o.mobile ?? []);
   const bots = o.bot === false ? [] : [{ faction: 5, difficulty: 1, personality: 'expander' as const, team: 1 }];
-  const h = rm.host({ prefs: prefs({ bots }), mobile: mobile.has('H') });
+  // a small map takes at most SMALL_MAX_PLAYERS (#232)
+  const size = 1 + bots.length + (o.guests ?? ['A', 'B']).length > SMALL_MAX_PLAYERS ? 'medium' : 'small';
+  const h = rm.host({ prefs: prefs({ bots, size }), mobile: mobile.has('H') });
   // the room opens empty (#184): the host seats its bots by hand
   for (const b of bots) h.lobby.setRow(b.faction, { k: 'bot', team: b.team, difficulty: b.difficulty, personality: b.personality });
   if (o.botSecs) h.lobby.setBotSecs(o.botSecs);

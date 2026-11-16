@@ -312,6 +312,12 @@ export const KEYS = {
   garrison: 1.5,
   /** key nests are at least this far apart (px) */
   apart: 220,
+  /**
+   * The score to win counts at most this many key nests (#232): with more,
+   * holding them all wins sooner than `points`, and holding one never takes
+   * longer than `points` × this, however many players there are.
+   */
+  maxScored: 4,
 };
 
 /**

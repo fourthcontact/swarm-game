@@ -272,18 +272,27 @@ function teamFace(w: World, team: number): number {
   return best;
 }
 
-/** The key-nest score that wins (#87). */
+/** The key-nest score that wins (#87), counting at most KEYS.maxScored key nests (#232). */
 export function keyTarget(w: World): number {
-  return KEYS.points * w.keys.length;
+  return KEYS.points * Math.min(w.keys.length, KEYS.maxScored);
+}
+
+/** The team holding nest `id` (a key nest), or -1 while nobody does. */
+export function keyTeam(w: World, id: number): number {
+  const n = w.nests[id];
+  return n.owner >= 0 && n.owner !== NEUTRAL ? w.teamOf[n.owner] : -1;
+}
+
+/** Whether key nest `id` scores for its holder now: fully held and uncontested. */
+export function keyScoring(w: World, id: number): boolean {
+  const n = w.nests[id];
+  return keyTeam(w, id) >= 0 && n.control >= 1 && !n.contested;
 }
 
 /** Key nests team `t` holds fully and uncontested: what it scores per tick. */
 function keyRate(w: World, t: number): number {
   let rate = 0;
-  for (const k of w.keys) {
-    const n = w.nests[k];
-    if (n.owner >= 0 && n.owner !== NEUTRAL && n.control >= 1 && !n.contested && w.teamOf[n.owner] === t) rate++;
-  }
+  for (const k of w.keys) if (keyScoring(w, k) && keyTeam(w, k) === t) rate++;
   return rate;
 }
 

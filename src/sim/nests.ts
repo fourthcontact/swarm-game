@@ -178,8 +178,10 @@ function updateControl(w: World, n: Nest): void {
 
   if (teamA === -1) {
     // Nobody here: owned nests recover, unowned ones decay.
-    if (n.owner < 0) n.control = Math.max(0, n.control - DT * 0.08);
-    else if (n.lockedUntil <= w.tick) n.control = Math.min(1, n.control + DT * 0.08 * (n.level >= 2 ? LEVEL.recovery : 1));
+    // At the pace of whoever's control it is (#207); `?? 1` for setups saved before controlDrift.
+    const drift = DT * 0.08 * (n.controller >= 0 ? (w.factions[n.controller]?.mods.controlDrift ?? 1) : 1);
+    if (n.owner < 0) n.control = Math.max(0, n.control - drift);
+    else if (n.lockedUntil <= w.tick) n.control = Math.min(1, n.control + drift * (n.level >= 2 ? LEVEL.recovery : 1));
     return;
   }
 

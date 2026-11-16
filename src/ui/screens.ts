@@ -229,10 +229,13 @@ export function tutorialMenu(p: TutorialProgress, h: { play: (i: number) => void
   return m;
 }
 
+/** The first mission at match pace: the one after the last sped-up mission (#207). */
+const firstAtPace = MISSIONS.length - [...MISSIONS].reverse().findIndex((m) => m.brisk);
+
 /** Sped-up missions say so, and so does the first one back at match speed (#207), so the change of pace isn't a surprise. */
 function paceNote(ms: Mission, i: number): string {
-  if (ms.brisk) return '<p class="pace">⏩ To save you time, dots move and capture faster in the first missions than in a real match.</p>';
-  if (MISSIONS[i - 1]?.brisk) return '<p class="pace">From here on, dots move at <b>real match speed</b>: slower than in the first missions.</p>';
+  if (ms.brisk) return '<p class="pace">⏩ To save you time, your dots move, capture and spawn faster here than in a real match.</p>';
+  if (i === firstAtPace) return '<p class="pace">This mission plays at <b>real match speed</b>, slower than the first missions.</p>';
   return '';
 }
 

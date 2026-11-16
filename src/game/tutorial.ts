@@ -116,22 +116,34 @@ const versus = (m: MapSpec, personality: 'turtler' | 'expander', energy = 0, pas
 });
 
 /**
- * The first missions only teach moving and capturing, so at match pace they
- * drag (#207): every player's dots move faster and capture faster there. Set
- * through faction mods at setup, so the sim stays deterministic.
+ * The first missions only teach moving, capturing and a first fight, so at
+ * match pace they drag (#207). There the player's dots move, capture and spawn
+ * faster, and an unfinished capture drains (or a nest recovers) at the same
+ * pace. Bots keep match pace. Set through faction mods at setup, so the sim
+ * stays deterministic.
  */
-export const BRISK = { speed: 1.5, capture: 2 };
+export const BRISK = { speed: 1.5, capture: 2, spawn: 1.5 };
 
-const brisk = (setup: MatchSetup): MatchSetup => ({
+export const brisk = (setup: MatchSetup): MatchSetup => ({
   ...setup,
   players: setup.players.map((p) => {
-    const mods = p.mods ?? defaultMods();
+    if (!p.human) return p;
+    const m = p.mods ?? defaultMods();
     return {
       ...p,
-      mods: { ...mods, captureRate: mods.captureRate * BRISK.capture, kind: mods.kind.map((k) => ({ ...k, speed: k.speed * BRISK.speed })) },
+      mods: {
+        ...m,
+        captureRate: m.captureRate * BRISK.capture,
+        controlDrift: m.controlDrift * BRISK.capture,
+        spawnRate: m.spawnRate * BRISK.spawn,
+        kind: m.kind.map((k) => ({ ...k, speed: k.speed * BRISK.speed })),
+      },
     };
   }),
 });
+
+/** A sped-up mission's setup goes through `brisk`: one flag drives both the setup and the briefing's note. */
+const withPace = (m: Mission): Mission => (m.brisk ? { ...m, setup: () => brisk(m.setup()) } : m);
 
 // ---- step checks -------------------------------------------------------------
 
@@ -298,7 +310,7 @@ function swarmStatus(c: StepCtx): string | null {
 
 // ---- the missions ----------------------------------------------------------------
 
-export const MISSIONS: Mission[] = [
+export const MISSIONS: Mission[] = ([
   {
     id: 'move',
     title: 'First steps',
@@ -802,14 +814,7 @@ export const MISSIONS: Mission[] = [
       },
     ],
   },
-];
-
-// Sped-up missions (#207): one flag drives both the setup and the briefing's note.
-for (const m of MISSIONS) {
-  if (!m.brisk) continue;
-  const plain = m.setup;
-  m.setup = () => brisk(plain());
-}
+] satisfies Mission[]).map(withPace);
 
 /** Advances through one mission's steps as the match plays. */
 export class MissionRun {

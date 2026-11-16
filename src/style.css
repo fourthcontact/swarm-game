@@ -189,6 +189,15 @@ label small { text-transform: none; letter-spacing: 0; opacity: 0.7; }
 .controls dd { margin: 0; color: #c6cceb; }
 
 .howto-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.powers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; margin: 8px 0; font-size: 14px; color: #c6cceb; }
+.powers dt { display: flex; align-items: center; gap: 8px; color: #fff; }
+.powers dt .cost { color: var(--accent); font-size: 13px; }
+.powers dt .cost::after { content: ' energy'; color: var(--muted); }
+.powers dt .from { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.powers dt .from i { width: 12px; height: 12px; display: inline-block; background: var(--accent); opacity: 0.85; }
+.powers dd { margin: 2px 0 0; line-height: 1.45; }
+.powers dd i { font-style: normal; color: var(--accent); }
+.powers-more summary { cursor: pointer; color: var(--accent); margin: 4px 0; }
 .nests { list-style: none; padding: 0; margin: 4px 0 8px; font-size: 14px; color: #c6cceb; }
 .nests li { display: flex; gap: 10px; align-items: center; margin: 6px 0; }
 .nests b { color: #fff; margin-right: 2px; }
@@ -503,7 +512,7 @@ label small { text-transform: none; letter-spacing: 0; opacity: 0.7; }
   .energy { width: 100%; height: 18px; }
   .energy span { line-height: 16px; font-size: 11px; }
   .tip, body:not(.mobile) .nestcard { display: none !important; }
-  .howto-grid, .field.two { grid-template-columns: 1fr; }
+  .howto-grid, .field.two, .powers { grid-template-columns: 1fr; }
   .end .result { font-size: 44px; }
   .stats th:nth-child(n+5), .stats td:nth-child(n+5) { display: none; }
 }

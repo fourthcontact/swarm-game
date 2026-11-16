@@ -572,6 +572,21 @@ button.crown.on { background: rgba(255, 209, 102, 0.16); }
 .warlord-chip small { display: block; font-size: 11px; color: #c9cde0; }
 .warlord-chip.below { top: 128px; }
 .hud.has-lord .toasts { top: 200px; }
+/* Domination's key nests (#232): one pip each, in its holder's color, gold while nobody holds it. */
+.keystrip { pointer-events: auto; display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 6px; font-size: 12px; color: #f2c45c; }
+.keystrip[hidden] { display: none; }
+.ks-pips { display: flex; gap: 5px; }
+.ks-pips i { width: 9px; height: 9px; transform: rotate(45deg); border: 1.5px solid #f2c45c; background: transparent; box-sizing: border-box; }
+.ks-pips i.held { background: var(--c); box-shadow: 0 0 6px var(--c); }
+.ks-pips i.mine { border-color: #fff; }
+.ks-pips i.contested { animation: ks-contest 0.5s ease-in-out infinite alternate; }
+.ks-pips i.taking { opacity: 0.55; }
+@keyframes ks-contest { to { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .ks-pips i.contested { animation: none; opacity: 0.6; } }
+.keystrip.sealed .ks-pips i { opacity: 0.5; }
+/* The key strip makes the top bar a row taller: what sits under it moves down with it. */
+.hud.has-keys .dom { top: 80px; }
+.hud.has-keys .toasts { top: 112px; }
 .warlord-chip .citadel-goal { margin-top: 4px; font-size: 11px; font-weight: 600; color: #fff; }
 .warlord-chip .citadel-goal span { display: block; margin-top: 3px; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
 .warlord-chip .citadel-goal i { display: block; height: 100%; width: 0; background: var(--c); transition: width 0.3s; }
@@ -1386,6 +1401,8 @@ body.mobile.land .warlord-chip small { font-size: 10px; }
 body.mobile.land .coach { left: var(--midl); right: var(--midr); width: auto; max-width: 520px; margin: 0 auto; transform: none; }
 body.mobile.land .toasts { top: calc(48px + var(--st)); left: var(--midx); }
 body.mobile.land .hud.has-siege .toasts, body.mobile.land .hud.has-lord .toasts { top: calc(92px + var(--st)); }
+body.mobile.land .hud.has-keys .toasts { top: calc(70px + var(--st)); }
+body.mobile.land .hud.has-keys .dom { top: calc(66px + var(--st)); }
 body.mobile.land .toast { font-size: 13px; padding: 4px 12px; white-space: normal; max-width: var(--midw); }
 body.mobile.land .aimhint.on { top: calc(48px + var(--st)); left: var(--midx); max-width: var(--midw); white-space: normal; }
 body.mobile.land .siege, body.mobile.land .heartbar { top: calc(44px + var(--st)); left: var(--midx); width: min(480px, calc(var(--midw) - 8px)); }

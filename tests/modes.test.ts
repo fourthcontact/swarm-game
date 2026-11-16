@@ -1,12 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
-import { applyMode, buildSetup, prefsProblem, DOMINATION_SHARE, loadPrefs, modeProblem, quickSetup, skirmishSiege, STRONGHOLD_SHARE, type SetupPrefs } from '../src/game/matchSetup';
+import { applyMode, buildSetup, MAX_KEYS, prefsSizeProblem, skirmishKeys, SMALL_MAX_PLAYERS, prefsProblem, DOMINATION_SHARE, loadPrefs, modeProblem, quickSetup, skirmishSiege, STRONGHOLD_SHARE, type SetupPrefs } from '../src/game/matchSetup';
 import { buildNetSetup, roomProblem, type LobbyState } from '../src/net/lobby';
 import { MAX_SEATS } from '../src/net/protocol';
-import { TICK_HZ } from '../src/sim/constants';
+import { KEYS, TICK_HZ } from '../src/sim/constants';
 import { resolveDamage } from '../src/sim/combat';
 import { worldHash } from '../src/sim/hash';
 import { createWorld, type MatchSetup } from '../src/sim/setup';
-import { step } from '../src/sim/step';
+import { removeUnit } from '../src/sim/world';
+import { keyTarget, step } from '../src/sim/step';
 import { Proxy } from '../src/proxy/proxy';
 import { siegeAt } from '../src/sim/siege';
 
@@ -49,17 +50,68 @@ describe('match types (#222)', () => {
     expect(s.domShare).toBeUndefined();
   });
 
-  it('Domination: key nests, two against two rivals, three against three', () => {
-    const three = buildSetup(prefs({ mode: 'domination' }), 'seed');
-    expect(three.keys).toBe(3);
-    expect(three.domShare).toBe(DOMINATION_SHARE);
-    const two = buildSetup(prefs({ mode: 'domination', bots: prefs().bots.slice(0, 2) }), 'seed');
-    expect(two.keys).toBe(2);
-    // Teams count as sides: 2v2 is one rival side.
+  it('Domination: one key nest more than the players (#232)', () => {
+    const four = buildSetup(prefs({ mode: 'domination' }), 'seed');
+    expect(four.keys).toBe(5);
+    expect(four.domShare).toBe(DOMINATION_SHARE);
+    const three = buildSetup(prefs({ mode: 'domination', bots: prefs().bots.slice(0, 2) }), 'seed');
+    expect(three.keys).toBe(4);
+    const duel = buildSetup(prefs({ mode: 'domination', bots: prefs().bots.slice(0, 1) }), 'seed');
+    expect(duel.keys).toBe(3);
+    // Players, not sides: a 2v2 has five.
     const teams = buildSetup(prefs({ mode: 'domination', teams: true, bots: prefs().bots.map((b, i) => ({ ...b, team: i === 0 ? 0 : 1 })) }), 'seed');
-    expect(teams.keys).toBe(2);
-    const w = createWorld(three);
-    expect(w.keys).toHaveLength(3);
+    expect(teams.keys).toBe(5);
+    expect(createWorld(four).keys).toHaveLength(5);
+    // never more than MAX_KEYS, however many seats there may be
+    expect(skirmishKeys(MAX_KEYS + 3)).toBe(MAX_KEYS);
+  });
+
+  it('Domination: the score to win counts at most KEYS.maxScored key nests (#232)', () => {
+    const duel = createWorld(buildSetup(prefs({ mode: 'domination', bots: prefs().bots.slice(0, 1) }), 'seed'));
+    expect(keyTarget(duel)).toBe(3 * KEYS.points);
+    const four = createWorld(buildSetup(prefs({ mode: 'domination' }), 'seed'));
+    expect(four.keys).toHaveLength(5);
+    expect(keyTarget(four)).toBe(KEYS.maxScored * KEYS.points);
+    // Holding every key nest wins sooner than KEYS.points, and the sim agrees.
+    four.keySealUntil = 0;
+    const me = four.factions.findIndex((f) => f.human);
+    for (const k of four.keys) Object.assign(four.nests[k], { owner: me, controller: me, control: 1, garrison: 0 });
+    for (let s = four.n - 1; s >= 0; s--) if (four.alive[s]) removeUnit(four, s);
+    let t = 0;
+    for (; t < KEYS.points && !four.over; t++) step(four, []);
+    expect(four.over).toBe(true);
+    expect(four.winReason).toBe('domination');
+    expect(t).toBeLessThan(KEYS.points);
+  });
+
+  it('Domination: key nests are spread over every map a skirmish allows', () => {
+    const bots = (n: number) => Array.from({ length: n }, (_, i) => ({ faction: i + 1, difficulty: 1, personality: 'expander' as const, team: i + 1 }));
+    let roomy = 0, maps = 0;
+    for (const size of ['small', 'medium', 'large'] as const)
+      for (const n of [2, 3, 4, 5, 6])
+        for (let seed = 0; seed < 12; seed++) {
+          const p = prefs({ mode: 'domination', size, bots: bots(n - 1) });
+          if (prefsSizeProblem(p)) continue;
+          const w = createWorld(buildSetup(p, `fit-${seed}`));
+          expect(w.keys).toHaveLength(n + 1);
+          const ks = w.keys.map((k) => w.nests[k]);
+          let gap = Infinity;
+          for (const a of ks) for (const b of ks) if (a !== b) gap = Math.min(gap, Math.hypot(a.x - b.x, a.y - b.y));
+          // Never on top of each other; KEYS.apart apart wherever the map has room, and it mostly does.
+          expect(gap).toBeGreaterThanOrEqual(100);
+          maps++;
+          if (gap >= KEYS.apart) roomy++;
+        }
+    expect(roomy / maps).toBeGreaterThan(0.8);
+  });
+
+  it('a skirmish on a small map takes at most SMALL_MAX_PLAYERS players (#232)', () => {
+    const bots = (n: number) => Array.from({ length: n }, (_, i) => ({ faction: i + 1, difficulty: 1, personality: 'expander' as const, team: i + 1 }));
+    expect(prefsProblem(prefs({ size: 'small', bots: bots(SMALL_MAX_PLAYERS - 1) }))).toBeNull();
+    expect(prefsProblem(prefs({ size: 'small', bots: bots(SMALL_MAX_PLAYERS) }))).toMatch(/small map/);
+    expect(prefsProblem(prefs({ size: 'medium', bots: bots(SMALL_MAX_PLAYERS) }))).toBeNull();
+    // Hold the line drops the bots: alone, a small map is fine.
+    expect(prefsProblem(prefs({ size: 'small', mode: 'hold', bots: bots(SMALL_MAX_PLAYERS) }))).toBeNull();
   });
 
   it('Stronghold: the chosen bot holds a walled citadel and turtles in it', () => {
@@ -171,8 +223,17 @@ describe('match types in a room (#222)', () => {
     ...over,
   });
 
+  it('a room on a small map takes at most SMALL_MAX_PLAYERS players (#232)', () => {
+    const full = room({ rows: room().rows.map((r, i) => (r.k === 'open' && i < SMALL_MAX_PLAYERS + 1 ? { k: 'bot' as const, team: i, difficulty: 1, personality: 'random' as const } : r)) });
+    expect(roomProblem(room())).toBeNull();
+    expect(roomProblem(full)).toMatch(/small map/);
+    expect(roomProblem({ ...full, map: { ...full.map, size: 'medium' } })).toBeNull();
+    // A random map is sized for the players already.
+    expect(roomProblem({ ...full, randomMap: true })).toBeNull();
+  });
+
   it('Domination and Stronghold carry into the match', () => {
-    expect(buildNetSetup(room({ mode: 'domination' })).keys).toBe(2);
+    expect(buildNetSetup(room({ mode: 'domination' })).keys).toBe(4);
     const s = buildNetSetup(room({ mode: 'stronghold', holder: 2 }));
     expect(s.stronghold).toMatchObject({ player: 2 });
     expect(s.players[2].bot!.citadel).toBe(true);

@@ -613,6 +613,8 @@ describe('the room, start to rematch (#184)', () => {
     expect(occupant(h.lobby.state)).toEqual(['H', 'A', 'open', 'D', 'bot', 'bot']);
     expect(seen.some((c) => c.joined.includes(3))).toBe(true);
     expect(seen.some((c) => c.left.some((l) => l.seat === 2))).toBe(true);
+    // five now: more than a small map takes (#232)
+    h.lobby.setMap({ size: 'medium' });
     const setup = rm.startNow(h)!;
     expect(setup.players.map((p) => [p.faction, p.human])).toEqual([[0, true], [1, true], [3, true], [4, false], [5, false]]);
     expect(d.start()?.seat).toBe(3);
@@ -693,7 +695,8 @@ describe('the room, start to rematch (#184)', () => {
 
   it('nobody to hand the room to: no pass; a host back from a reload runs its room again, alone in it', () => {
     const rm = room();
-    const h = rm.host();
+    // six seats: more than a small map takes (#232)
+    const h = rm.host({ prefs: prefs({ size: 'medium' }) });
     h.lobby.fillBots();
     h.lobby.setLocked(true);
     expect(h.lobby.handOff()).toBeNull();
@@ -742,8 +745,13 @@ describe('the room, start to rematch (#184)', () => {
     expect(seen.size).toBeGreaterThan(1);
     // off: the host's settings stand
     h.lobby.setRandomMap(false);
+    h.lobby.setMap({ size: 'large' });
+    expect(h.lobby.start()!.size).toBe('large');
+    h.lobby.cancelStart();
+    // but not a small map for six (#232)
     h.lobby.setMap({ size: 'small' });
-    expect(h.lobby.start()!.size).toBe('small');
+    expect(roomProblem(h.lobby.state)).toMatch(/small map/);
+    expect(h.lobby.start()).toBeNull();
   });
 });
 

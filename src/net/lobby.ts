@@ -1,5 +1,5 @@
 import { playerCharacter } from '../game/character';
-import { applyMode, MATCH_MODES, modeProblem, personalityPicker, randomMap, randomSeed, seedOf, WAVE_NAMES, type MatchMode, type SetupPrefs } from '../game/matchSetup';
+import { applyMode, MATCH_MODES, modeProblem, sizeProblem, personalityPicker, randomMap, randomSeed, seedOf, WAVE_NAMES, type MatchMode, type SetupPrefs } from '../game/matchSetup';
 import { PERSONALITIES, type Personality } from '../sim/ai/bot';
 import type { CaveLevel, EventLevel, MapLayout, MapSize, TerrainLevel } from '../sim/mapgen';
 import { OPENING_TICKS } from '../sim/constants';
@@ -113,6 +113,9 @@ function holderIndex(s: LobbyState): number {
 
 /** Why the room can't start as its match type (#222), or null. */
 export function roomProblem(s: LobbyState): string | null {
+  // a random map is sized for the players already (randomMap)
+  const sized = s.randomMap ? null : sizeProblem(s.map.size, players(s));
+  if (sized) return sized;
   if (s.mode === 'hold') {
     if (s.rows.some((r) => r.k === 'bot')) return 'Hold the line has no bots: remove them';
     return humans(s) > MAX_DEFENDERS ? `Hold the line takes at most ${MAX_DEFENDERS} players` : null;

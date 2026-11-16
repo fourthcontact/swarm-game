@@ -8,7 +8,7 @@ import { formatTime } from './hud';
 import type { AudioEngine, VolumeKind } from '../audio/engine';
 import { THEMES } from '../audio/themes';
 import { clearRecordings, countRecordings, downloadRecordings, recordingEnabled, setRecordingEnabled } from '../game/recordStore';
-import { buildSetup, loadPrefs, MATCH_MODES, MATCH_MODE_BLURB, MATCH_MODE_LABEL, prefsProblem, randomMap, randomSeed, savePrefs, settleTeams, WAVE_NAMES, type MatchMode, type SetupPrefs } from '../game/matchSetup';
+import { buildSetup, loadPrefs, MATCH_MODES, MATCH_MODE_BLURB, MATCH_MODE_LABEL, prefsProblem, prefsSizeProblem, randomMap, randomSeed, savePrefs, settleTeams, WAVE_NAMES, type MatchMode, type SetupPrefs } from '../game/matchSetup';
 import { relayOnly, setRelayOnly, TURN_URL } from '../net/ice';
 import { MISSIONS, missionUnlocked, type Mission, type NextStep, type TutorialProgress } from '../game/tutorial';
 import { isMobile, setUiMode, UI_MODES, uiMode, type UiMode } from './mobile';
@@ -741,9 +741,10 @@ export function skirmishSetup(onStart: (setup: MatchSetup, scenario?: string) =>
     const noEvents = fields.el.querySelector<HTMLButtonElement>('[data-a=events] button[data-v=off]')!;
     if (prefs.mode === 'hold') noEvents.disabled = true;
     const problem = prefsProblem(prefs);
+    const sized = prefsSizeProblem(prefs);
     const p = m.querySelector('.problem') as HTMLElement;
     p.hidden = !problem;
-    p.textContent = problem ? `${problem}: change the teams, or pick another match type.` : '';
+    p.textContent = sized ? `${sized}, or remove a bot.` : problem ? `${problem}: change the teams, or pick another match type.` : '';
     (m.querySelector('[data-a=start]') as HTMLButtonElement).disabled = !!problem;
   };
 

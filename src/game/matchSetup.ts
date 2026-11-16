@@ -164,8 +164,16 @@ export const MATCH_MODE_BLURB: Record<MatchMode, string> = {
   hold: 'walled in, hold your capital against the Bloom’s waves',
 };
 
-/** Key nests in a Domination battle (#87): two, three with three rivals or more. */
+/** Key nests in a campaign Domination battle (#87): two, three with three rivals or more. */
 export const keyNests = (rivals: number) => (rivals >= 3 ? 3 : 2);
+/** The most key nests a skirmish or room's Domination has (#232). */
+export const MAX_KEYS = 7;
+/**
+ * Key nests in a skirmish or room's Domination (#232): one more than the
+ * players, so there's always one more to fight over than anyone can sit on,
+ * up to MAX_KEYS. The score to win grows with them, to KEYS.maxScored's worth.
+ */
+export const skirmishKeys = (players: number) => Math.min(players + 1, MAX_KEYS);
 /** Domination's nest share, with key nests only the HUD's guide (#87). */
 export const DOMINATION_SHARE = 0.5;
 /** A stronghold's holder starts with three nests: production in its stronghold (#100). */
@@ -195,15 +203,27 @@ export function settleTeams(p: SetupPrefs): void {
   if (p.teams && p.bots.length && p.bots.every((b) => b.team === 0)) p.bots[p.bots.length - 1].team = 1;
 }
 
-/** Why the skirmish screen's choices can't be played as their match type (#222), or null: as Start would build them. */
+/** The most players a small map takes (#232), as the random map never picks one for more. */
+export const SMALL_MAX_PLAYERS = 4;
+
+/** Why a map size can't hold `players` players and bots, or null. */
+export function sizeProblem(size: MapSize, players: number): string | null {
+  return size === 'small' && players > SMALL_MAX_PLAYERS ? `A small map takes at most ${SMALL_MAX_PLAYERS} players: pick Medium or Large` : null;
+}
+
+/** Why the skirmish screen's map size can't hold its players (#232), or null. */
+export function prefsSizeProblem(p: SetupPrefs): string | null {
+  return sizeProblem(p.size, 1 + (p.mode === 'hold' ? 0 : p.bots.length));
+}
+
+/** Why the skirmish screen's choices can't be played (#222, #232), or null: as Start would build them. */
 export function prefsProblem(p: SetupPrefs): string | null {
+  const sized = prefsSizeProblem(p);
+  if (sized) return sized;
   const settled = structuredClone(p);
   settleTeams(settled);
   return modeProblem(buildSetup({ ...settled, mode: 'conquest' }, ''), p.mode, 1 + p.holder);
 }
-
-/** The sides in a setup: distinct teams. */
-const sidesOf = (s: MatchSetup) => new Set(s.players.map((p) => p.team)).size;
 
 /** Whether a setup can be played as a mode; if not, why. */
 export function modeProblem(s: MatchSetup, mode: MatchMode, holder: number): string | null {
@@ -228,7 +248,7 @@ export function applyMode(s: MatchSetup, mode: MatchMode, o: { holder?: number; 
   if (mode === 'conquest' || modeProblem(s, mode, holder)) return s;
   switch (mode) {
     case 'domination':
-      return { ...s, keys: keyNests(sidesOf(s) - 1), domShare: DOMINATION_SHARE };
+      return { ...s, keys: skirmishKeys(s.players.length), domShare: DOMINATION_SHARE };
     case 'stronghold': {
       const h = s.players[holder];
       const attackers = new Set(s.players.filter((p) => p.team !== h.team).map((p) => p.team)).size;

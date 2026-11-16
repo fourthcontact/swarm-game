@@ -1772,7 +1772,7 @@ class App {
     const holder = hs ? g.setup.players[hs.player].faction : -1;
     const text =
       type === 'domination'
-        ? 'Domination: score on the gold-ringed key nests'
+        ? `Domination: hold the ${w.keys.length} gold-marked key nests to score`
         : type === 'stronghold'
           ? `♛ Stronghold: take ${this.seatName(holder)}'s citadel to win`
           : (w.siege?.defenders.length ?? 1) > 1

@@ -119,10 +119,26 @@ function drawNests(r: Renderer, w: World, o: SceneOpts): void {
       r.shape(false, n.x, n.y, R * 1.9, 7, 1, 0, 0, c, Math.round(18 + 30 * beat));
     }
 
+    // A key nest (#232): a gold diamond above it, so it reads as the goal by shape, not just its ring.
+    const key = w.keys.includes(n.id);
+    if (key) {
+      // Above the outermost ring (key nests reach R×2 with their seal arc).
+      const s = R * 0.6, cy = n.y - R * 2.2 - s * 1.3;
+      const pts: [number, number][] = [[n.x, cy - s * 1.3], [n.x + s, cy], [n.x, cy + s * 1.3], [n.x - s, cy]];
+      const pulse = 0.5 + 0.5 * Math.sin(o.time * 2.4);
+      for (let k = 0; k < 4; k++) {
+        const [x0, y0] = pts[k], [x1, y1] = pts[(k + 1) % 4];
+        r.beam(x0, y0, x1, y1, 20, 16, 8, 200, 5);
+        r.beam(x0, y0, x1, y1, KEY_RGB[0], KEY_RGB[1], KEY_RGB[2], Math.round(200 + 55 * pulse), 2.6);
+      }
+      // its holder's color at the heart of it, once it's held
+      if (n.owner >= 0 && n.owner !== NEUTRAL) r.unit(n.x, cy, s * 0.9, c[0], c[1], c[2], 255);
+    }
+
     // An ally's nest (#74): a chevron above it, so it reads as friendly by shape, not just colour.
     if (o.allies && n.owner >= 0 && o.allies[n.owner]) {
-      // Above the outermost ring (key nests reach R×2 with their seal arc, domination R×1.85).
-      const h = R * 2.35, s = R * 0.48;
+      // Above the outermost ring (domination reaches R×1.85), and above a key nest's diamond.
+      const h = key ? R * 4.9 : R * 2.35, s = R * 0.48;
       const tx = n.x, ty = n.y - h;
       r.beam(tx - s, ty + s * 0.6, tx, ty, 255, 255, 255, 230, 3.4);
       r.beam(tx, ty, tx + s, ty + s * 0.6, 255, 255, 255, 230, 3.4);
@@ -135,7 +151,7 @@ function drawNests(r: Renderer, w: World, o: SceneOpts): void {
       r.shape(false, n.x, n.y, n.r * 1.2, 0, 0.92, 0, 0.035, c, 120);
     }
     // Key nests (#87): a pulsing gold ring (the holder's color once taken), faint while still sealed.
-    if (w.keys.includes(n.id)) {
+    if (key) {
       const sealed = w.keySealUntil > w.tick;
       const kc = n.owner >= 0 && n.owner !== NEUTRAL ? c : KEY_RGB;
       const pulse = 0.5 + 0.5 * Math.sin(o.time * 2.4);

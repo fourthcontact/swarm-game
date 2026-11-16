@@ -21,7 +21,7 @@ const WAVE_ICON: Record<WaveKind, string> = {
   pincer: svg('<path d="M1 8l4-4v3h6V4l4 4-4 4V9H5v3z"/>'),
   colossus: svg('<circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="2.4"/><circle cx="8" cy="8" r="2"/>'),
 };
-import { type NestPower, dominationStatus, UNIT_STATS, DOMINATION, KEYS, MAX_LEVEL, NEST_BLURB, NEST_NAMES, NEUTRAL, POWER, TICK_HZ, UPGRADE_COST, bloodCost, siphonWait, surgeCost } from '../sim/index';
+import { type NestPower, dominationStatus, keyScoring, keyTarget, keyTeam, UNIT_STATS, DOMINATION, KEYS, MAX_LEVEL, NEST_BLURB, NEST_NAMES, NEUTRAL, POWER, TICK_HZ, UPGRADE_COST, bloodCost, siphonWait, surgeCost } from '../sim/index';
 
 const TIPS = [
   'Drag to select your dots, right-click to send them. Tap on touch.',
@@ -126,6 +126,8 @@ export class Hud {
   private warlord = -1;
   private nestShare: HTMLDivElement;
   private domMark: HTMLElement;
+  private readonly keyStrip: HTMLElement;
+  private keySig = '';
   private nestCard: HTMLDivElement;
   private tip: HTMLDivElement;
   private aimHint: HTMLDivElement;
@@ -166,6 +168,7 @@ export class Hud {
       <div class="hud-top">
         <div class="strength" title="Army size"></div>
         <div class="nestshare" title="Nests held. Hold past the marker for 30s to win by domination"><div class="segs"></div><span class="mark"></span></div>
+        <div class="keystrip" hidden><span class="ks-pips"></span><span class="ks-text"></span></div>
         <div class="chips"></div>
         <div class="team-pop"></div>
       </div>
@@ -285,6 +288,7 @@ export class Hud {
     this.boon = q('.boon');
     this.nestShare = q('.nestshare .segs');
     this.domMark = q('.nestshare .mark');
+    this.keyStrip = q('.keystrip');
     this.nestCard = q('.nestcard');
     this.tip = q('.tip');
     this.aimHint = q('.aimhint');
@@ -619,6 +623,63 @@ export class Hud {
     t.style.opacity = String(you.level);
   }
 
+  /**
+   * Domination's key nests (#232), from the start: a pip for each in its
+   * holder's color (gold while nobody holds it), and what your side is doing
+   * about them. The nest share doesn't win here, so update() hides its marker.
+   */
+  private updateKeys(g: GameView): void {
+    const w = g.world;
+    const on = w.keys.length > 0;
+    this.keyStrip.hidden = !on;
+    this.el.classList.toggle('has-keys', on);
+    const nestBar = this.nestShare.parentElement!;
+    const barTitle = on ? 'Nests held. In Domination only the key nests score' : 'Nests held. Hold past the marker for 30s to win by domination';
+    if (nestBar.title !== barTitle) nestBar.title = barTitle;
+    if (!on) return;
+    const clock = (t: number) => {
+      const secs = Math.ceil(t / TICK_HZ);
+      return `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+    };
+    const target = keyTarget(w);
+    const title = `Key nests, marked in gold on the map. Your side scores while it holds them uncontested: holding all ${w.keys.length} wins in ${clock(target / w.keys.length)}, holding one in ${clock(target)}.`;
+    if (this.keyStrip.title !== title) this.keyStrip.title = title;
+    const myTeam = g.human >= 0 ? w.teamOf[g.human] : -1;
+    const sealed = w.keySealUntil > w.tick;
+    let scoring = 0, fought = 0, sig = sealed ? 's' : '';
+    const pips: string[] = [];
+    for (const k of w.keys) {
+      const n = w.nests[k];
+      const team = keyTeam(w, k);
+      const ours = team >= 0 && team === myTeam;
+      const scores = keyScoring(w, k);
+      if (ours && scores) scoring++;
+      if (ours && n.contested) fought++;
+      // contested: rivals at it (held or not); taking: held, its control still filling
+      const cls = [ours ? 'mine' : '', team >= 0 ? 'held' : '', n.contested ? 'contested' : team >= 0 && !scores ? 'taking' : ''].filter(Boolean).join(' ');
+      sig += `${team >= 0 ? n.owner : '-'}${cls}|`;
+      pips.push(`<i class="${cls}" style="--c:${team >= 0 ? hex(n.owner) : '#f2c45c'}"></i>`);
+    }
+    if (sig !== this.keySig) {
+      this.keySig = sig;
+      (this.keyStrip.children[0] as HTMLElement).innerHTML = pips.join('');
+    }
+    this.keyStrip.classList.toggle('sealed', sealed);
+    const text = sealed
+      ? `Key nests open in ${clock(w.keySealUntil - w.tick)}`
+      : g.human < 0
+        ? 'Key nests'
+        : scoring > 0
+          ? `Key nests: you score on ${scoring} of ${w.keys.length}`
+          : fought > 0
+            ? 'Key nests: contested, clear them to score'
+            : w.keys.some((k) => keyTeam(w, k) === myTeam)
+              ? 'Key nests: securing yours'
+              : 'Key nests: take one to score';
+    const el = this.keyStrip.children[1] as HTMLElement;
+    if (el.textContent !== text) el.textContent = text;
+  }
+
   update(g: GameView, dt: number): void {
     this.game = g;
     this.updateSiege(g);
@@ -716,11 +777,13 @@ export class Hud {
     // Your team's line (#213: in a team match each team has its own).
     const domShare = w.domShareOf(g.human >= 0 ? w.teamOf[g.human] : -1);
     this.domMark.style.left = `${domShare * 100}%`;
-    // No domination win in this match (a share past 1, #146): no marker.
-    this.domMark.style.display = domShare > 1 ? 'none' : '';
+    // No domination win in this match (a share past 1, #146), or key nests win it instead (#232): no marker.
+    this.domMark.style.display = domShare > 1 || w.keys.length ? 'none' : '';
     active.forEach((f, k) => {
       (this.nestShare.children[k] as HTMLElement).style.width = `${(100 * nestsOf(f.id)) / Math.max(1, w.nests.length)}%`;
     });
+
+    this.updateKeys(g);
 
     // The Bloom's heart (campaign finale): its health, and what wards it.
     const hs = heartSlot(w);

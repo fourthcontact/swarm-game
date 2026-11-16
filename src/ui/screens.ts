@@ -229,8 +229,10 @@ export function tutorialMenu(p: TutorialProgress, h: { play: (i: number) => void
   return m;
 }
 
-/** Sped-up missions say so, and so does the first one back at match speed (#207), so the change of pace isn't a surprise. */
-/** `next`: on the debrief, about the mission that comes next. */
+/**
+ * Sped-up missions say so, and so does the first one back at match speed (#207), so the change of pace isn't a surprise.
+ * Shown on a mission's briefing, and (`next`) on the debrief before it, since 'Next mission' skips the briefing.
+ */
 function paceNote(i: number, next = false): string {
   const ms = MISSIONS[i];
   if (ms.brisk) return `<p class="pace">⏩ To save you time, your dots move, capture and spawn faster ${next ? 'there' : 'here'} than in a real match.</p>`;
@@ -281,7 +283,7 @@ export function missionDebrief(
         <h2>${won ? (real ? 'Graduated' : 'Mission complete') : 'Defeated'}</h2>
         ${body}
         ${!last ? `<p class="hint">Next: ${MISSIONS[i + 1].title}. ${MISSIONS[i + 1].teaches}</p>` : ''}
-        ${!last && !!MISSIONS[i + 1].brisk !== !!ms.brisk ? paceNote(i + 1, true) : ''}
+        ${!last ? paceNote(i + 1, true) : ''}
         <div class="row end">
           ${won && real ? '' : '<button data-a="menu">Main menu</button>'}
           ${won ? '' : `<button data-a="retry"${real ? ' class="primary"' : ''}>Retry</button>`}

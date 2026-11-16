@@ -3,7 +3,7 @@ import { DIFFICULTY_NAMES, PERSONALITIES, type Personality } from '../sim/ai/bot
 import { CAVE_LEVELS, EVENT_LEVELS, MAP_LAYOUTS, TERRAIN_LEVELS, type CaveLevel, type EventLevel, type MapLayout, type MapSize, type TerrainLevel } from '../sim/mapgen';
 import type { MatchSetup } from '../sim/setup';
 import type { World } from '../sim/world';
-import { NEUTRAL } from '../sim/constants';
+import { NEUTRAL, POWER, TICK_HZ } from '../sim/constants';
 import { formatTime } from './hud';
 import type { AudioEngine, VolumeKind } from '../audio/engine';
 import { THEMES } from '../audio/themes';
@@ -400,6 +400,32 @@ export function settingsScreen(audio: AudioEngine, onBack: () => void): HTMLDivE
   return m;
 }
 
+const secs = (ticks: number) => Math.round(ticks / TICK_HZ);
+
+/** Every power: what it does and when to use it (#206). Shared by both How to play layouts; key hints hide on mobile. */
+const POWERS_HTML = `
+  <p>Powers spend <b>energy</b>, which builds up over time and faster from kills and captures. Surge and Nova are always yours; each other power comes with holding a nest of its type, and a <b>level 3</b> nest makes its power last longer or reach farther.</p>
+  <dl class="powers">
+    <div><dt><b>Surge</b> <kbd>Q</kbd><span class="cost">${POWER.surgeCost}</span><span class="from">always</span></dt>
+    <dd>Your selected dots move ${POWER.surgeSpeed}× faster, hit ${POWER.surgeDmg}× harder and take ${Math.round((1 - POWER.surgeArmor) * 100)}% less damage for ${secs(POWER.surgeTicks)} seconds.
+      <i>Tip:</i> fire it as a fight starts, to catch a retreating group, or to dash across a rift.</dd></div>
+    <div><dt><b>Nova</b> <kbd>E</kbd><span class="cost">${POWER.novaCost}</span><span class="from">always</span></dt>
+    <dd>Sacrifices a fifth of your selected dots (at least 2; it needs 4) to blast every enemy around them and knock them back. Bigger groups blast wider, and tough units take extra damage.
+      <i>Tip:</i> walk a big group into a packed enemy army or onto a nest's guards, then fire. A small group's Nova costs more than it kills.</dd></div>
+    <div><dt><b>Fortify</b> <kbd>R</kbd><span class="cost">${POWER.fortifyCost}</span><span class="from"><i class="n-sq"></i>Forge</span></dt>
+    <dd>Your selected dots take half damage but move at ${Math.round(POWER.fortifySlow * 100)}% speed for ${secs(POWER.fortifyTicks)} seconds.
+      <i>Tip:</i> hold a nest against a wave, or push into turret fire. Don't use it to chase.</dd></div>
+    <div><dt><b>Barrage</b> <kbd>F</kbd><span class="cost">${POWER.barrageCost}</span><span class="from"><i class="n-dia"></i>Spire</span></dt>
+    <dd>Your nearest nest fires a shell that lands where you aim, up to ${POWER.barrageRange} px from one of your nests, and hurts only enemies. It flies for a moment first, and one shell has a damage limit, so it wipes out a small group but only dents a big one.
+      <i>Tip:</i> clear a neutral nest's guards before you capture it, or break a group sitting on your nest. Aim at dots that are standing still.</dd></div>
+    <div><dt><b>Blink</b> <kbd>G</kbd><span class="cost">${POWER.blinkCost}</span><span class="from"><i class="n-tri"></i>Den</span></dt>
+    <dd>Your selected dots jump up to ${POWER.blinkRange} px toward where you aim, even over walls.
+      <i>Tip:</i> get inside a fortress, take a nest from behind its defenders, or pull a losing group out of a fight.</dd></div>
+    <div><dt><b>Lockdown</b> <kbd>T</kbd><span class="cost">${POWER.lockdownCost}</span><span class="from"><i class="n-oct"></i>Bastion</span></dt>
+    <dd>A rival's nest stops spawning and can't repair itself for ${secs(POWER.lockdownTicks)} seconds.
+      <i>Tip:</i> lock the nest you're about to attack so no fresh dots defend it, or lock a rival's best nest before a big fight.</dd></div>
+  </dl>`;
+
 /** Shorter, touch-first How to play for mobile mode. */
 function howToPlayMobile(onBack: () => void): HTMLDivElement {
   const m = el(`
@@ -427,6 +453,10 @@ function howToPlayMobile(onBack: () => void): HTMLDivElement {
         <p><b>Spears beat Shields, Shields beat Swarmers, Swarmers beat Spears.</b></p>
         <h3>Powers and upgrades</h3>
         <p><b>Surge</b> and <b>Nova</b> fire on your selected dots. Nest powers: tap the button, then tap the target. Tap one of your nests, then <b>Upgrade</b> to feed it dots for faster spawns and a turret.</p>
+        <details class="powers-more">
+          <summary>What each power does</summary>
+          ${POWERS_HTML}
+        </details>
         <h3>The map</h3>
         <p>Rock blocks paths (cave maps are mostly rock, with tunnels between chambers), purple nebula slows, red rifts burn the longer you stand in them. Hold a crystal or a supply drop alone for energy. Wild swarms and the Colossus fight everyone.</p>
         <h3>The campaign</h3>
@@ -475,9 +505,10 @@ export function howToPlay(onBack: () => void): HTMLDivElement {
             </ul>
             <h3>Map events</h3>
             <p>A <b>wild swarm</b> (red-gray) hunts the biggest army nearby, so lead it into a rival. <b>Supply drops</b> pay energy and a free nest upgrade to whoever holds them alone (the biggest army only gets the energy). The <b>Colossus</b> wanders across the map: whoever lands the killing blow gets full energy and an upgrade. Neutral nests regrow their guards, and nests nobody holds go wild again.</p>
-            <p><b>Energy</b> builds up over time, and faster from kills and captures. <b>Surge</b> (30) makes your selected dots faster, stronger and tougher for 6 seconds. <b>Nova</b> (60) sacrifices some of your dots to blast everything around them.</p>
           </div>
         </div>
+        <h3>Powers</h3>
+        ${POWERS_HTML}
         <p class="hint">The procedural campaign has its own How to play, with a tour of its map: open it from the campaign's run list, or with <b>?</b> on a run's map.</p>
         <h3>Controls</h3>
         ${CONTROLS_HTML}

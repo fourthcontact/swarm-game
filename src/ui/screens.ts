@@ -229,6 +229,17 @@ export function tutorialMenu(p: TutorialProgress, h: { play: (i: number) => void
   return m;
 }
 
+/**
+ * Sped-up missions say so, and so does the first one back at match speed (#207), so the change of pace isn't a surprise.
+ * Shown on a mission's briefing, and (`next`) on the debrief before it, since 'Next mission' skips the briefing.
+ */
+function paceNote(i: number, next = false): string {
+  const ms = MISSIONS[i];
+  if (ms.brisk) return `<p class="pace">⏩ To save you time, your dots move, capture and spawn faster ${next ? 'there' : 'here'} than in a real match.</p>`;
+  if (i > 0 && MISSIONS[i - 1].brisk) return `<p class="pace">${next ? 'It' : 'This mission'} plays at <b>real match speed</b>, slower than the first missions.</p>`;
+  return '';
+}
+
 export function missionBriefing(ms: Mission, i: number, h: { start: () => void; back: () => void }): HTMLDivElement {
   const m = el(`
     <div class="screen modal">
@@ -236,6 +247,7 @@ export function missionBriefing(ms: Mission, i: number, h: { start: () => void; 
         <small class="eyebrow">Mission ${i + 1} of ${MISSIONS.length}</small>
         <h2>${ms.title}</h2>
         <p>${ms.teaches}</p>
+        ${paceNote(i)}
         <p class="hint">Follow the instructions at the top of the screen. ${isMobile() ? 'Pause' : 'Esc pauses'} any time.</p>
         <div class="row end"><button data-a="back">Back</button><button class="primary" data-a="start">Start</button></div>
       </div>
@@ -271,6 +283,7 @@ export function missionDebrief(
         <h2>${won ? (real ? 'Graduated' : 'Mission complete') : 'Defeated'}</h2>
         ${body}
         ${!last ? `<p class="hint">Next: ${MISSIONS[i + 1].title}. ${MISSIONS[i + 1].teaches}</p>` : ''}
+        ${!last ? paceNote(i + 1, true) : ''}
         <div class="row end">
           ${won && real ? '' : '<button data-a="menu">Main menu</button>'}
           ${won ? '' : `<button data-a="retry"${real ? ' class="primary"' : ''}>Retry</button>`}

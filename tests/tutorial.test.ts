@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { loadProgress, MISSIONS, MissionRun, missionUnlocked, type Lock } from '../src/game/tutorial';
+import { brisk, BRISK, loadProgress, MISSIONS, MissionRun, missionUnlocked, type Lock } from '../src/game/tutorial';
 import type { TimedCommand } from '../src/game/session';
 import { applyCommand, hasPower, type Command } from '../src/sim/commands';
 import { NEUTRAL, POWER, TICK_HZ, UNIT_STATS, UPGRADE_COST, UPGRADE_PICK_RADIUS } from '../src/sim/constants';
-import { createWorld } from '../src/sim/setup';
+import { createWorld, type MatchSetup } from '../src/sim/setup';
+import { defaultMods } from '../src/sim/mods';
 import { step } from '../src/sim/step';
 import { UNIT_FEEDING, type World } from '../src/sim/world';
 
@@ -184,6 +185,57 @@ describe('tutorial pacing', () => {
     }
     expect(seen).toBeGreaterThan(start);
     expect((seen - start) / TICK_HZ).toBeLessThan(8);
+  });
+});
+
+describe('brisk first missions (#207)', () => {
+  it('only missions 1 to 3 are sped up', () => {
+    expect(MISSIONS.map((m) => !!m.brisk)).toEqual(MISSIONS.map((_, i) => i < 3));
+  });
+
+  it('a sped-up mission speeds up its human player, and leaves bots at match pace', () => {
+    for (const m of MISSIONS.filter((m) => m.brisk)) {
+      const setup = m.setup();
+      const w = createWorld(setup);
+      for (const p of setup.players) {
+        const f = w.factions[p.faction].mods;
+        const x = p.human ? 1 : 0;
+        expect(f.captureRate).toBe(x ? BRISK.capture : 1);
+        expect(f.spawnRate).toBe(x ? BRISK.spawn : 1);
+        for (const k of f.kind) expect(k.speed).toBe(x ? BRISK.speed : 1);
+      }
+    }
+  });
+
+  it('builds on mods a setup already has', () => {
+    const plain = MISSIONS[3].setup();
+    const mods = defaultMods();
+    mods.captureRate = 1.2;
+    mods.kind[0].speed = 1.1;
+    const sped = brisk({ ...plain, players: plain.players.map((p) => (p.human ? { ...p, mods } : p)) });
+    const me = sped.players.find((p) => p.human)!.mods!;
+    expect(me.captureRate).toBeCloseTo(1.2 * BRISK.capture);
+    expect(me.kind[0].speed).toBeCloseTo(1.1 * BRISK.speed);
+  });
+
+  it('an unfinished capture still drains at match pace, in the beginner\'s favour', () => {
+    const drained = (fast: boolean) => {
+      const base = MISSIONS[3].setup();
+      const setup: MatchSetup = {
+        ...base,
+        players: [{ faction: 0, team: 0, human: true }],
+        map: { ...base.map!, nests: [{ x: 170, y: 340, type: 0, level: 1, player: 0, garrison: 0 }, { x: 820, y: 400, type: 0, level: 1, player: -1, garrison: 0 }] },
+      };
+      const w = createWorld(fast ? brisk(setup) : setup);
+      const n = w.nests[1];
+      n.owner = -1; // unowned, not Neutral's
+      n.controller = 0;
+      n.control = 0.8;
+      for (let t = 0; t < 2 * TICK_HZ; t++) step(w, []);
+      return 0.8 - n.control;
+    };
+    expect(drained(false)).toBeGreaterThan(0);
+    expect(drained(true)).toBeCloseTo(drained(false));
   });
 });
 

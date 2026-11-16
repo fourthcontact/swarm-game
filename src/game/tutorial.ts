@@ -9,6 +9,7 @@ import { nestIcon } from '../ui/nesticon';
 import { quickSetup } from './matchSetup';
 import { inArmy, UNIT_FEEDING, WILD_SWARM } from '../sim/world';
 import { queryRadius } from '../sim/spatial';
+import { defaultMods } from '../sim/mods';
 import type { TimedCommand } from './session';
 
 /**
@@ -75,6 +76,8 @@ export interface Mission {
   locked: Lock[];
   /** a real match (#147): the graduation 1v1. It can't be skipped, and finishing it graduates you */
   real?: true;
+  /** dots move and capture faster than in a match, to save time on the basics (#207); the briefing says so */
+  brisk?: true;
   /** hold the game for a few seconds whenever the instruction changes, so it can be read first */
   readPause?: boolean;
   steps: Step[];
@@ -111,6 +114,36 @@ const versus = (m: MapSpec, personality: 'turtler' | 'expander', energy = 0, pas
     { faction: 1, team: 1, human: false, bot: { difficulty: 0, personality, passive }, unitCap, prod },
   ],
 });
+
+/**
+ * The first missions only teach moving, capturing and a first fight, so at
+ * match pace they drag (#207). There the player's dots move, capture and spawn
+ * faster; bots keep match pace. With nobody on a nest, control still drifts at
+ * match pace, so a half-done capture lasts longer than it was quick to make: in
+ * the beginner's favour. Set through faction mods at setup, so the sim stays
+ * deterministic.
+ */
+export const BRISK = { speed: 1.5, capture: 2, spawn: 1.5 };
+
+export const brisk = (setup: MatchSetup): MatchSetup => ({
+  ...setup,
+  players: setup.players.map((p) => {
+    if (!p.human) return p;
+    const m = p.mods ?? defaultMods();
+    return {
+      ...p,
+      mods: {
+        ...m,
+        captureRate: m.captureRate * BRISK.capture,
+        spawnRate: m.spawnRate * BRISK.spawn,
+        kind: m.kind.map((k) => ({ ...k, speed: k.speed * BRISK.speed })),
+      },
+    };
+  }),
+});
+
+/** A sped-up mission's setup goes through `brisk`: one flag drives both the setup and the briefing's note. */
+const withPace = (m: Mission): Mission => (m.brisk ? { ...m, setup: () => brisk(m.setup()) } : m);
 
 // ---- step checks -------------------------------------------------------------
 
@@ -277,13 +310,14 @@ function swarmStatus(c: StepCtx): string | null {
 
 // ---- the missions ----------------------------------------------------------------
 
-export const MISSIONS: Mission[] = [
+export const MISSIONS: Mission[] = ([
   {
     id: 'move',
     title: 'First steps',
     teaches: 'Select your dots, send them, and capture nests.',
     learned: ['Select dots, then give them an order.', 'Move as one group: gather your dots, then send them together.', 'Nests you capture make more dots.'],
     locked: ALL_POWERS,
+    brisk: true,
     setup: () => solo(map([nest(170, 340, NestType.Hive, 0, 12), nest(480, 300, NestType.Hive, -1, 3), nest(820, 400, NestType.Hive, -1, 6)])),
     steps: [
       {
@@ -318,6 +352,7 @@ export const MISSIONS: Mission[] = [
       'Swarmers beat Spears, Spears beat Shields, Shields beat Swarmers.',
     ],
     locked: ALL_POWERS,
+    brisk: true,
     setup: () =>
       solo(
         map(
@@ -379,6 +414,7 @@ export const MISSIONS: Mission[] = [
       'A player with no nests and no dots is out.',
     ],
     locked: ['nova', 'upgrade', 'fortify', 'barrage', 'blink', 'lockdown'],
+    brisk: true,
     setup: () =>
       versus(
         map(
@@ -778,7 +814,7 @@ export const MISSIONS: Mission[] = [
       },
     ],
   },
-];
+] satisfies Mission[]).map(withPace);
 
 /** Advances through one mission's steps as the match plays. */
 export class MissionRun {

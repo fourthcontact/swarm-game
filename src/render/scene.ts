@@ -1,5 +1,5 @@
 import { FACTION_RGB, WHITE, mixRgb, type RGB } from '../content/factions';
-import { bastionRange, keyScoring, DAMAGE_VS, EVENTS, KEYS, Kind, NEUTRAL, NestType, POWER, TERRAIN, UNIT_FEEDING, UNIT_RETREAT, UNIT_STATS, UPGRADE_COST, VARIANTS } from '../sim/index';
+import { bastionRange, keyRates, keyScores, DAMAGE_VS, EVENTS, KEYS, Kind, NEUTRAL, NestType, POWER, TERRAIN, UNIT_FEEDING, UNIT_RETREAT, UNIT_STATS, UPGRADE_COST, VARIANTS } from '../sim/index';
 import { HEART, heartSlot, standingNests } from '../sim/heart';
 import { SIEGE } from '../sim/siege';
 import { WILD_HEART, type Drop, type World } from '../sim/world';
@@ -76,8 +76,16 @@ function nestColor(owner: number): RGB {
   return owner < 0 ? UNOWNED : FACTION_RGB[owner];
 }
 
+/** this frame's keyRates, for drawNests */
+let rates = new Int32Array(0);
+
 function drawNests(r: Renderer, w: World, o: SceneOpts): void {
   const pulseT = Math.sin(o.time * 5) * 0.5 + 0.5;
+  // Who scores on key nests can't change within a frame: work it out once (#260).
+  // Copied, as keyRates hands back a shared scratch array.
+  const src = keyRates(w);
+  if (rates.length !== src.length) rates = new Int32Array(src.length);
+  rates.set(src);
   for (const n of w.nests) {
     const c = nestColor(n.owner);
     const own = n.owner === o.human;
@@ -113,7 +121,8 @@ function drawNests(r: Renderer, w: World, o: SceneOpts): void {
     }
 
     // Nests of a dominating team throb, faster as the clock runs down; in Domination only its scoring key nests (#260).
-    const k = domThrob(w, n.id);
+    const key = w.keys.includes(n.id);
+    const k = domThrob(w, n.id, key, rates);
     if (k >= 0) {
       const beat = 0.5 + 0.5 * Math.sin(o.time * (4 + 10 * k));
       r.shape(true, n.x, n.y, R * (1.6 + 0.25 * beat), 0, 1, 0, 0.05, c, Math.round(90 + 140 * beat));
@@ -121,15 +130,15 @@ function drawNests(r: Renderer, w: World, o: SceneOpts): void {
     }
 
     // A key nest (#232): a gold diamond above it, so it reads as the goal by shape, not just its ring.
-    const key = w.keys.includes(n.id);
     if (key) {
       // Above the outermost ring (key nests reach R×2 with their seal arc).
       const s = R * 0.6, cy = n.y - R * 2.2 - s * 1.3;
       const pts: [number, number][] = [[n.x, cy - s * 1.3], [n.x + s, cy], [n.x, cy + s * 1.3], [n.x - s, cy]];
       // #254: once held, its edge takes the holder's color, so the battlefield shows who holds what;
-      // it beats while that side scores on it, and holds still while it doesn't (still taking, or contested).
+      // it beats while that side scores on it, and holds still while it doesn't (still taking, contested,
+      // or another side holds more, #260).
       const held = n.owner >= 0 && n.owner !== NEUTRAL;
-      const scoring = held && keyScoring(w, n.id);
+      const scoring = held && keyScores(w, n.id, rates);
       const edge = held ? c : KEY_RGB;
       const pulse = scoring ? 0.5 + 0.5 * Math.sin(o.time * 5) : held ? 0.3 : 0.5 + 0.5 * Math.sin(o.time * 2.4);
       const width = scoring ? 2.6 + 1.6 * pulse : 2.6;

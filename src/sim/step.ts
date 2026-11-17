@@ -305,11 +305,21 @@ export function keyRate(w: World, t: number): number {
 }
 
 /**
+ * Whether key nest `id` scores for its holder now (#260): fully held and
+ * uncontested (keyScoring), and its team holds the most (keyRate). `rates`
+ * lets a caller checking many nests in one frame pass keyRates once.
+ */
+export function keyScores(w: World, id: number, rates: ArrayLike<number> = keyRates(w)): boolean {
+  return keyScoring(w, id) && rates[keyTeam(w, id)] > 0;
+}
+
+/**
  * Key nests each team scores on now (#250), in one pass over the key nests.
  * Only the team holding strictly the most scores (#255): a lone edge holder
  * scores only while nobody else holds one, and a tie at the top scores nothing.
+ * Returns a shared scratch array: read it before the next call, or copy it.
  */
-function keyRates(w: World): Int32Array {
+export function keyRates(w: World): Int32Array {
   if (rateScratch.length < w.keyScore.length) rateScratch = new Int32Array(w.keyScore.length);
   rateScratch.fill(0);
   for (const k of w.keys) if (keyScoring(w, k)) rateScratch[keyTeam(w, k)]++;

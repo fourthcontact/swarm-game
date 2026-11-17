@@ -341,3 +341,53 @@ void main(){
   }
   o = vec4(col, 0.0);
 }`;
+
+// Surge streak (#54): a short glowing tail behind a surging unit, stretched
+// back along its velocity. One quad per surging unit: v_p.x runs 0 at the
+// unit to 1 at the tail's end, v_p.y across it.
+export const STREAK_VS = `#version 300 es
+layout(location=0) in vec2 a_q;
+layout(location=1) in vec4 a_ht;  // head x, y; tail offset x, y
+layout(location=2) in float a_w;  // half-width, world units
+layout(location=3) in vec4 a_c;
+uniform vec4 u_cam;
+uniform vec2 u_rot;
+uniform float u_px;
+out vec2 v_p;
+out vec4 v_c;
+void main(){
+  vec2 d = a_ht.zw;
+  float L = max(length(d), 1e-4);
+  vec2 dir = d / L;
+  vec2 nrm = vec2(-dir.y, dir.x);
+  // Never thinner than a few pixels, so it still reads zoomed out and on a phone.
+  float hw = max(a_w, u_px * 2.5);
+  float t = a_q.x * 0.5 + 0.5;
+  // The quad itself tapers toward the tail, so no fragments are spent on its
+  // empty corners. Both coordinates are linear in world space, so they
+  // interpolate exactly across the trapezoid.
+  float side = a_q.y * mix(1.0, 0.3, t);
+  vec2 wp = a_ht.xy + d * t + nrm * side * hw;
+  v_p = vec2(t, side);
+  v_c = a_c;
+  vec2 cd = wp - u_cam.xy;
+  gl_Position = vec4(vec2(u_rot.x * cd.x - u_rot.y * cd.y, u_rot.y * cd.x + u_rot.x * cd.y) * u_cam.zw, 0., 1.);
+}`;
+
+export const STREAK_FS = `#version 300 es
+precision mediump float;
+in vec2 v_p;
+in vec4 v_c;
+out vec4 o;
+void main(){
+  float t = v_p.x;
+  // Tapers and fades toward the tail; a hot white core along the middle.
+  float r = abs(v_p.y) / mix(1.0, 0.3, t);
+  float fall = (1.0 - t) * (1.0 - t);
+  float glow = max(1.0 - r, 0.0);
+  glow *= glow;
+  float core = 1.0 - smoothstep(0.12, 0.38, r);
+  vec3 c = mix(v_c.rgb, vec3(1.0), core * 0.55);
+  // additive (alpha 0), like the beams
+  o = vec4(c * (glow * 0.6 + core * 0.7) * fall * v_c.a, 0.0);
+}`;

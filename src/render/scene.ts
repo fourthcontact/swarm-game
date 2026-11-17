@@ -298,6 +298,7 @@ function drawUnits(r: Renderer, w: World, o: SceneOpts): void {
       // Mend's Surge glows green.
       c = mixRgb(c, w.factions[owner]?.mods.mend ? MEND_RGB : WHITE, 0.25 * surgeGlow);
       size *= 1.15;
+      surgeStreak(r, w, i, x, y, size, c);
     }
     // Rift heat (#58): an ember glow that builds the longer they stand in it.
     if (w.heat[i]) {
@@ -358,6 +359,29 @@ function drawUnits(r: Renderer, w: World, o: SceneOpts): void {
     r.unit(x, y, size, c[0], c[1], c[2], alpha, shape, angle);
   }
 }
+
+/**
+ * Surge's speed trail (#54): a glowing streak behind a surging unit, stretched
+ * back along its velocity, longer and brighter the faster it goes. A unit
+ * standing still to fight shows none. One instance in its own pass, so it costs
+ * next to nothing even with hundreds surging.
+ */
+function surgeStreak(r: Renderer, w: World, i: number, x: number, y: number, size: number, c: RGB): void {
+  const vx = w.vx[i], vy = w.vy[i];
+  const sp2 = vx * vx + vy * vy;
+  if (sp2 < STREAK_MIN_SP2) return;
+  const sp = Math.sqrt(sp2);
+  // Streak fades in with speed; its length is how far it goes in STREAK_SECS, capped.
+  const f = Math.min(1, (sp - STREAK_MIN_SP) / STREAK_FULL_SP);
+  const len = Math.min(sp * STREAK_SECS, STREAK_MAX_LEN) + size * 0.5;
+  const k = -len / sp;
+  r.streak(x, y, vx * k, vy * k, size * 0.62, c[0], c[1], c[2], Math.round(255 * f));
+}
+const STREAK_MIN_SP = 10;
+const STREAK_MIN_SP2 = STREAK_MIN_SP * STREAK_MIN_SP;
+const STREAK_FULL_SP = 50;
+const STREAK_SECS = 0.28;
+const STREAK_MAX_LEN = 40;
 
 /** A crown above a warlord's capital: three points over a band. */
 function crownAt(r: Renderer, x: number, y: number, s: number, c: RGB): void {

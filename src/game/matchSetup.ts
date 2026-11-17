@@ -4,7 +4,7 @@
  * random seed name, and the ready-made quick matches the menu suggests.
  */
 
-import { DIFFICULTY, PERSONALITIES, type Personality } from '../sim/ai/bot';
+import { BEGINNER, DIFFICULTY, PERSONALITIES, type Personality } from '../sim/ai/bot';
 import type { CaveLevel, EventLevel, MapLayout, MapSize, TerrainLevel } from '../sim/mapgen';
 import { hashString } from '../sim/rng';
 import { OPENING_TICKS } from '../sim/constants';
@@ -267,12 +267,15 @@ export function applyMode(s: MatchSetup, mode: MatchMode, o: { holder?: number; 
   }
 }
 
-/** Ready-made matches the menu suggests: the graduation 1v1 and what comes after. */
-export function quickSetup(kind: 'normal1v1' | 'easy1v1' | 'ffa'): MatchSetup {
+/** The ready-made matches the menu suggests. */
+export type SuggestedMatch = 'normal1v1' | 'easy1v1' | 'beginner1v1' | 'ffa';
+
+/** Build a suggested match: the graduation 1v1, the Beginner and Easy warm-ups (#117), or the FFA that comes after. */
+export function quickSetup(kind: SuggestedMatch): MatchSetup {
   const p = loadPrefs();
   const others = [0, 1, 2, 3, 4, 5].filter((c) => c !== p.color);
   const bots = kind === 'ffa' ? 3 : 1;
-  const difficulty = kind === 'easy1v1' ? 0 : 1;
+  const difficulty = kind === 'beginner1v1' ? BEGINNER : kind === 'easy1v1' ? 0 : 1;
   return buildSetup(
     {
       ...p,

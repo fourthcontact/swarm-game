@@ -31,6 +31,9 @@ interface Stats {
   n2: number[];
   n3: number[];
   peak: number[];
+  /** games where the proxy lost one of its nests (knocked neutral or taken), and when it first did (s) */
+  nestLost: number;
+  firstLoss: number[];
   orders: number;
   rallies: number;
   moves: number;
@@ -40,7 +43,7 @@ interface Stats {
   died: DeathTally;
   botDied: DeathTally;
 }
-const stats = (): Stats => ({ played: 0, won: 0, place: [], minutes: [], kills: 0, lost: 0, n2: [], n3: [], peak: [], orders: 0, rallies: 0, moves: 0, moveUnits: 0, powers: 0, upgrades: 0, died: tally(), botDied: tally() });
+const stats = (): Stats => ({ played: 0, won: 0, place: [], minutes: [], kills: 0, lost: 0, n2: [], n3: [], peak: [], nestLost: 0, firstLoss: [], orders: 0, rallies: 0, moves: 0, moveUnits: 0, powers: 0, upgrades: 0, died: tally(), botDied: tally() });
 const pct = (a: number, b: number) => `${((100 * a) / Math.max(1, b)).toFixed(0)}%`;
 const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : NaN);
 const POWERS = new Set<Command['t']>(['surge', 'nova', 'fortify', 'barrage', 'blink', 'lockdown']);
@@ -50,6 +53,9 @@ function play(setup: MatchSetup, seat: number, s: Stats): void {
   const proxy = new Proxy(seat, { skill, knobs });
   const first = [-1, -1];
   let peak = 0;
+  // Who held each nest at the last check, to spot the proxy losing one (#117).
+  const owners = w.nests.map((n) => n.owner);
+  let firstLoss = -1;
   // Elimination order, for placement in FFAs.
   const out: number[] = [];
   while (!w.over && w.tick < CAP) {
@@ -62,6 +68,11 @@ function play(setup: MatchSetup, seat: number, s: Stats): void {
       if (c.t === 'upgrade') s.upgrades++;
     }
     step(w, cmds);
+    // Every tick, so a nest taken and lost between seconds still counts.
+    for (const n of w.nests) {
+      if (firstLoss < 0 && owners[n.id] === seat && n.owner !== seat) firstLoss = w.tick / TICK_HZ;
+      owners[n.id] = n.owner;
+    }
     countDeaths(w, (o) => (o === seat ? s.died : w.factions[o]?.active ? s.botDied : null));
     w.fx = [];
     w.deaths = [];
@@ -88,6 +99,7 @@ function play(setup: MatchSetup, seat: number, s: Stats): void {
   if (first[0] >= 0) s.n2.push(first[0]);
   if (first[1] >= 0) s.n3.push(first[1]);
   s.peak.push(peak);
+  if (firstLoss >= 0) (s.nestLost++, s.firstLoss.push(firstLoss));
 }
 
 function report(name: string, s: Stats): void {
@@ -101,6 +113,7 @@ function report(name: string, s: Stats): void {
       `K/L ${(s.kills / Math.max(1, s.lost)).toFixed(2)}`,
       `nest2/3 ${avg(s.n2).toFixed(0)}/${avg(s.n3).toFixed(0)}s`,
       `peak ${avg(s.peak).toFixed(0).padStart(3)}`,
+      `lost a nest ${pct(s.nestLost, s.played)} (first at ${avg(s.firstLoss).toFixed(0)}s)`,
       `orders/min ${(s.orders / mins).toFixed(1)} (move ${pct(s.moves, s.orders)} rally ${pct(s.rallies, s.orders)} power ${pct(s.powers, s.orders)} upg ${pct(s.upgrades, s.orders)})`,
       `dots/move ${(s.moveUnits / Math.max(1, s.moves)).toFixed(0)}`,
       `powers/min ${(s.powers / mins).toFixed(1)}`,

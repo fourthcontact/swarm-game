@@ -1,4 +1,4 @@
-import { PERSONALITIES } from '../sim/ai/bot';
+import { DIFFICULTY_NAMES, PERSONALITIES, validDifficulty } from '../sim/ai/bot';
 import type { Command } from '../sim/commands';
 import { FACTION_UNIT_CAP, NEUTRAL } from '../sim/constants';
 import { QUANTUM } from '../sim/sanitize';
@@ -322,7 +322,7 @@ function writeCtrl(w: Writer, c: Ctrl): void {
   w.u8(st | (c.bot ? 4 : 0));
   if (c.bot) {
     const pi = PERSONALITIES.indexOf(c.bot.personality);
-    if (pi < 0 || !Number.isInteger(c.bot.difficulty) || c.bot.difficulty < 0 || c.bot.difficulty > 3) throw new Error('codec: bad seat bot');
+    if (pi < 0 || !validDifficulty(c.bot.difficulty)) throw new Error('codec: bad seat bot');
     w.u8(c.bot.difficulty * 4 + pi);
   }
 }
@@ -345,7 +345,7 @@ function readCtrl(r: Reader): Ctrl {
   if (!(b & 4)) return { k, seat: s, state };
   const bb = r.u8();
   const personality = PERSONALITIES[bb & 3];
-  if (bb >= 16 || !personality) throw new Bad();
+  if (bb >= DIFFICULTY_NAMES.length * 4 || !personality) throw new Bad();
   return { k, seat: s, state, bot: { difficulty: bb >> 2, personality } };
 }
 

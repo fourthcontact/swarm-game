@@ -12,7 +12,7 @@ import { BOT_SECS, COUNTDOWN_MS, holderSeat, ROOM_MODES, roomProblem, type BotSe
 import type { LinkInfo } from '../net/transport';
 import { DIFFICULTY_NAMES, PERSONALITIES, type Personality } from '../sim/ai/bot';
 import { relayOnly } from '../net/ice';
-import { mapFields, relayField, type MapChoice } from './screens';
+import { difficultyOptions, mapFields, relayField, type MapChoice } from './screens';
 
 function el(html: string): HTMLDivElement {
   const t = document.createElement('template');
@@ -445,7 +445,7 @@ export function lobbyScreen(link: string, choices: Character[], h: LobbyHandlers
       if (isHost && !mine && open) actions = '<button class="small" data-a="kick" title="Remove from the room">Remove</button>';
     } else if (r.k === 'bot') {
       who = isHost
-        ? `<span class="bot-tag">Bot</span><select data-a="diff">${DIFFICULTY_NAMES.map((d, k) => `<option value="${k}"${k === r.difficulty ? ' selected' : ''}>${d}</option>`).join('')}</select>
+        ? `<span class="bot-tag">Bot</span><select data-a="diff">${difficultyOptions(r.difficulty)}</select>
            <select data-a="pers">${(['random', ...PERSONALITIES] as const).map((p) => `<option value="${p}"${p === r.personality ? ' selected' : ''}>${PERSONA[p]}</option>`).join('')}</select>`
         : `<span class="bot-tag">Bot</span> ${DIFFICULTY_NAMES[r.difficulty]} · ${PERSONA[r.personality]}`;
       // Stronghold (#222): a crown on the bot holding the citadel; the host can hand it to another bot

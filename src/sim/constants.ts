@@ -297,8 +297,9 @@ export const DOMINATION = {
 
 /**
  * Key nests (#87): a campaign Domination battle is scored on its key nests,
- * king of the hill. Each team scores a point a tick for each key nest it holds
- * uncontested, and wins at `points` per key nest (all of them held: `points`
+ * king of the hill. The team holding the most key nests uncontested scores a
+ * point a tick for each of them (#255: nobody else scores, and nobody does on a
+ * tie at the top), and wins at `points` per key nest (all of them held: `points`
  * ticks; half of them: twice that). Nothing pauses or resets, so a split map
  * still ends. Past `threat` of the target a team is the one everyone stops.
  * Key nests sit away from every start, are sealed for the first `seal` ticks

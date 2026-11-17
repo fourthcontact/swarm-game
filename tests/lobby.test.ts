@@ -12,6 +12,7 @@ import { FRAME, play, prefs, room, ROOM_KEY, wipe, type Guest } from './rig';
 import { fullHash } from '../src/sim/snapshot';
 import { createWorld } from '../src/sim/setup';
 import { ordinal, placingOf } from '../src/game/standing';
+import { DIFFICULTY_NAMES } from '../src/sim/ai/bot';
 
 const occupant = (s: LobbyState) => s.rows.map((r) => (r.k === 'human' ? r.peer : r.k));
 
@@ -136,6 +137,18 @@ describe('lobby (#162)', () => {
     expect(ffa.players[2].bot?.personality).not.toBe('random');
     h.lobby.setTeams(true);
     expect(buildNetSetup(h.lobby.state).players.map((p) => p.team)).toEqual([0, 1, 1]);
+  });
+
+  it('every difficulty the host can pick reaches the guests (#246)', () => {
+    const { host, guest } = room();
+    const h = host();
+    const a = guest('A');
+    DIFFICULTY_NAMES.forEach((_, d) => {
+      const bot = { k: 'bot' as const, team: 2, difficulty: d, personality: 'random' as const };
+      h.lobby.setRow(2, bot);
+      expect(parseLobby(JSON.stringify(h.lobby.state))).toEqual(h.lobby.state);
+      expect(a.lobby.state?.rows[2]).toEqual(bot);
+    });
   });
 
   it('a match type (#222): the guest sees it, and a stronghold needs a bot to hold it', () => {

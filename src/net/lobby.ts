@@ -1,6 +1,6 @@
 import { playerCharacter } from '../game/character';
 import { applyMode, MATCH_MODES, modeProblem, sizeProblem, personalityPicker, randomMap, randomSeed, seedOf, WAVE_NAMES, type MatchMode, type SetupPrefs } from '../game/matchSetup';
-import { BEGINNER, PERSONALITIES, type Personality } from '../sim/ai/bot';
+import { PERSONALITIES, validDifficulty, type Personality } from '../sim/ai/bot';
 import type { CaveLevel, EventLevel, MapLayout, MapSize, TerrainLevel } from '../sim/mapgen';
 import { OPENING_TICKS } from '../sim/constants';
 import { MAX_DEFENDERS, type MatchSetup } from '../sim/setup';
@@ -189,7 +189,7 @@ function validRow(r: SeatRow): boolean {
     case 'closed':
       return true;
     case 'bot':
-      return [BEGINNER, 0, 1, 2].includes(r.difficulty) && (r.personality === 'random' || PERSONALITIES.includes(r.personality));
+      return validDifficulty(r.difficulty) && (r.personality === 'random' || PERSONALITIES.includes(r.personality));
     case 'human':
       return typeof r.peer === 'string' && r.peer.length <= 64 && Number.isInteger(r.char) && r.char >= 0 && r.char <= 0xffffffff && typeof r.mobile === 'boolean' && (r.ready === undefined || typeof r.ready === 'boolean') && (r.cell === undefined || typeof r.cell === 'boolean') && (r.seal === undefined || isSeal(r.seal));
     default:

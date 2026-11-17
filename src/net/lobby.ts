@@ -449,10 +449,10 @@ export class HostLobby {
     this.edit(() => (this.state.seed = text.slice(0, MAX_SEED_TEXT)));
   }
 
-  /** set an empty or bot row; a guest's row only by `kick` */
+  /** set an empty or bot row; a guest's row only by `kick`. A row guests would reject (#246) is refused here. */
   setRow(seat: number, row: Exclude<SeatRow, { k: 'human' }>): void {
     const r = this.state.rows[seat];
-    if (!r || r.k === 'human') return;
+    if (!r || r.k === 'human' || !validRow(row)) return;
     this.edit(() => (this.state.rows[seat] = row));
   }
 

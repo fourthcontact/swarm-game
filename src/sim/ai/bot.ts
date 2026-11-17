@@ -26,8 +26,8 @@ export const DIFFICULTY_BLURBS: readonly string[] = [
   'Hard, with 1.5× production. Expect to lose.',
   'For your first matches: slow, gentle attacks you can recover from.',
 ];
-/** Is `d` a known difficulty index? */
-export const validDifficulty = (d: unknown): d is number => Number.isInteger(d) && (d as number) >= 0 && (d as number) < DIFFICULTY_NAMES.length;
+/** Is `d` a known difficulty index? Bound by the knobs it indexes into (a test keeps the names, blurbs and knobs the same length). */
+export const validDifficulty = (d: unknown): d is number => Number.isInteger(d) && (d as number) >= 0 && (d as number) < DIFFICULTY.length;
 
 export interface BotConfig {
   difficulty: number; // an index into DIFFICULTY (BEGINNER is 4)

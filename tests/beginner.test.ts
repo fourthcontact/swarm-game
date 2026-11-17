@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BEGINNER, DIFFICULTY, DIFFICULTY_NAMES, DIFFICULTY_ORDER, type Bot } from '../src/sim/ai/bot';
+import { BEGINNER, DIFFICULTY, DIFFICULTY_BLURBS, DIFFICULTY_NAMES, DIFFICULTY_ORDER, validDifficulty, type Bot } from '../src/sim/ai/bot';
 import { TICK_HZ } from '../src/sim/constants';
 import { seatToBot } from '../src/sim/seats';
 import { createWorld, type MatchSetup } from '../src/sim/setup';
@@ -19,6 +19,11 @@ describe('Beginner bot (#117)', () => {
     expect(DIFFICULTY_NAMES[BEGINNER]).toBe('Beginner');
     expect(DIFFICULTY_ORDER[0]).toBe(BEGINNER);
     expect([...DIFFICULTY_ORDER].sort()).toEqual(DIFFICULTY_NAMES.map((_, k) => k));
+    // every difficulty has a name, a blurb and its knobs (#246)
+    expect(DIFFICULTY.length).toBe(DIFFICULTY_NAMES.length);
+    expect(DIFFICULTY_BLURBS.length).toBe(DIFFICULTY_NAMES.length);
+    expect(DIFFICULTY_NAMES.every((_, k) => validDifficulty(k))).toBe(true);
+    for (const bad of [-1, DIFFICULTY.length, 1.5, NaN, '3', null]) expect(validDifficulty(bad)).toBe(false);
     const b = DIFFICULTY[BEGINNER], easy = DIFFICULTY[0];
     expect(b.powers).toBe(false);
     expect(b.think).toBeGreaterThan(easy.think);

@@ -149,6 +149,15 @@ describe('lobby (#162)', () => {
       expect(parseLobby(JSON.stringify(h.lobby.state))).toEqual(h.lobby.state);
       expect(a.lobby.state?.rows[2]).toEqual(bot);
     });
+    // anything else: guests reject it, and the host won't set it in the first place
+    const row = h.lobby.state.rows[2];
+    for (const difficulty of [-1, DIFFICULTY_NAMES.length, 1.5, NaN, '3'] as number[]) {
+      const bad = { k: 'bot' as const, team: 2, difficulty, personality: 'random' as const };
+      expect(parseLobby(JSON.stringify({ ...h.lobby.state, rows: h.lobby.state.rows.map((r, k) => (k === 2 ? bad : r)) }))).toBeNull();
+      h.lobby.setRow(2, bad);
+      expect(h.lobby.state.rows[2]).toEqual(row);
+    }
+    expect(a.lobby.state?.rows[2]).toEqual(row);
   });
 
   it('a match type (#222): the guest sees it, and a stronghold needs a bot to hold it', () => {

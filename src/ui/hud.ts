@@ -21,7 +21,7 @@ const WAVE_ICON: Record<WaveKind, string> = {
   pincer: svg('<path d="M1 8l4-4v3h6V4l4 4-4 4V9H5v3z"/>'),
   colossus: svg('<circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="2.4"/><circle cx="8" cy="8" r="2"/>'),
 };
-import { type NestPower, dominationStatus, keyRate, keyScoring, keyTarget, keyTeam, UNIT_STATS, DOMINATION, KEYS, MAX_LEVEL, NEST_BLURB, NEST_NAMES, NEUTRAL, POWER, TICK_HZ, UPGRADE_COST, bloodCost, siphonWait, surgeCost } from '../sim/index';
+import { type NestPower, dominationStatus, keyRate, keyScoring, keyTarget, keyTeam, soonestKeyWin, UNIT_STATS, DOMINATION, KEYS, MAX_LEVEL, NEST_BLURB, NEST_NAMES, NEUTRAL, POWER, TICK_HZ, UPGRADE_COST, bloodCost, siphonWait, surgeCost } from '../sim/index';
 
 const TIPS = [
   'Drag to select your dots, right-click to send them. Tap on touch.',
@@ -701,10 +701,12 @@ export class Hud {
     this.ksBars.style.setProperty('--nk', String(w.keys.length));
     // More than four sides: thinner bars, so the top bar stays as slim as Conquest's on a phone.
     this.ksBars.classList.toggle('many', sides.length > 4);
-    // The leader: the highest score among sides still in.
-    let lead: (typeof sides)[number] | null = null;
-    for (const s of sides) if (!s.out && s.score > 0 && (!lead || s.score > lead.score)) lead = s;
-    const threat = lead && lead.score >= KEYS.threat * target ? lead.t.team : -1;
+    // The leader (#250): the side still in that wins soonest at its rate; while nobody scores, the top score.
+    const lead = soonestKeyWin(sides.filter((s) => !s.out));
+    // The threat line is the sim's (its domStart toast): the top score among sides still in.
+    let top: (typeof sides)[number] | null = null;
+    for (const s of sides) if (!s.out && s.score > 0 && (!top || s.score > top.score)) top = s;
+    const threat = top && top.score >= KEYS.threat * target ? top.t.team : -1;
     const now = performance.now();
     // Flash a side's bar as it passes the threat line (the domStart toast says it).
     if (threat >= 0 && threat !== this.threatTeam) this.flashUntil.set(threat, now + 3000);

@@ -400,7 +400,8 @@ button.crown.on { background: rgba(255, 209, 102, 0.16); }
 
 .hud { position: absolute; inset: 0; pointer-events: none; }
 .hud button { pointer-events: auto; }
-.hud-top { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: min(560px, calc(100% - 180px)); }
+/* Centered, clear of the clock and buttons at the top right (about 150px) on both sides (#250). */
+.hud-top { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: min(560px, calc(100% - 320px)); }
 .strength { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: rgba(255, 255, 255, 0.06); gap: 2px; }
 .strength i { display: block; flex-basis: 0; transition: flex-grow 0.4s; box-shadow: 0 0 10px currentColor; }
 .chips { display: flex; justify-content: center; gap: 14px; margin-top: 6px; font-size: 13px; }
@@ -758,7 +759,7 @@ table.lat .bad { color: #ff5d73; }
 }
 
 @media (max-width: 720px) {
-  .hud-top { width: calc(100% - 130px); left: 12px; transform: none; }
+  .hud-top { width: calc(100% - 160px); left: 12px; transform: none; }
   .chips { justify-content: flex-start; gap: 8px; font-size: 12px; flex-wrap: wrap; }
   .chips .team { gap: 6px; padding: 1px 5px; flex-wrap: wrap; max-width: 100%; }
   .hud-bottom { flex-wrap: wrap; justify-content: center; gap: 8px; bottom: 8px; }

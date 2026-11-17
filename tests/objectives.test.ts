@@ -4,7 +4,7 @@ import { newRun, type RunState } from '../src/campaign/run';
 import { KEYS, Kind, NEUTRAL, SURGE, TICK_HZ } from '../src/sim/constants';
 import { generateMap } from '../src/sim/mapgen';
 import { createWorld, mapParamsOf } from '../src/sim/setup';
-import { dominationStatus, keyTarget, step } from '../src/sim/step';
+import { dominationStatus, keyEta, keyTarget, soonestKeyWin, step } from '../src/sim/step';
 import { removeUnit, spawnUnit, type World } from '../src/sim/world';
 
 // Conquest and Domination play differently (#87): key nests, and a late Bloom surge.
@@ -132,6 +132,29 @@ describe('key nests (#87)', () => {
     w.keyScore[w.teamOf[me]] = 1500;
     for (const f of w.factions) if (f.team === w.teamOf[rival]) f.eliminated = true;
     expect(dominationStatus(w)?.team).toBe(w.teamOf[me]);
+  });
+
+  it('headlines the side soonest to win, not a top scorer that has stopped scoring (#250)', () => {
+    const [r, id] = nodeOf('domination');
+    const w = createWorld(nodeSetup(r, id));
+    const me = w.factions.findIndex((f) => f.human);
+    const rival = w.factions.findIndex((f, i) => f.active && i !== me && i !== NEUTRAL && w.teamOf[i] !== w.teamOf[me]);
+    empty(w);
+    w.keySealUntil = 0;
+    for (const k of w.keys) Object.assign(w.nests[k], { owner: me, controller: me, control: 1, contested: false });
+    const target = keyTarget(w);
+    // The rival is two seconds from winning but holds no key nest; we hold them all.
+    w.keyScore[w.teamOf[rival]] = target - 2 * TICK_HZ;
+    w.keyScore[w.teamOf[me]] = Math.round(target * 0.4);
+    const ds = dominationStatus(w)!;
+    expect(ds.team).toBe(w.teamOf[me]);
+    expect(ds.paused).toBeFalsy();
+    expect(ds.left).toBe(keyEta(w, w.teamOf[me]));
+    run(w, ds.left + 30);
+    expect(w.winnerTeam).toBe(w.teamOf[me]);
+    // Nobody scoring: the top scorer, paused.
+    expect(soonestKeyWin([{ score: 10, eta: Infinity }, { score: 30, eta: Infinity }])?.score).toBe(30);
+    expect(soonestKeyWin([{ score: 0, eta: Infinity }])).toBeNull();
   });
 
   it('as the seal opens, a key nest gets back the guards killed while it was sealed', () => {

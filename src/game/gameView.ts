@@ -230,7 +230,7 @@ export class GameView {
     const ds = this.result ? null : dominationStatus(w);
     const secs = ds ? Math.ceil(ds.left / TICK_HZ) : -1;
     if (secs !== this.domSecs) {
-      if (ds && secs <= 10 && secs > 0) this.s.sfx.domTick(1 - secs / 10, ds.team === w.teamOf[this.human]);
+      if (ds && !ds.paused && secs <= 10 && secs > 0) this.s.sfx.domTick(1 - secs / 10, ds.team === w.teamOf[this.human]);
       this.domSecs = secs;
     }
     // Holding the line (#67): the clock ticks through its last ten seconds.

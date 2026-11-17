@@ -296,6 +296,28 @@ export function keyRate(w: World, t: number): number {
   return rate;
 }
 
+/**
+ * The side to headline in a key-nest race (#250): the one soonest to win at its
+ * current rate (`eta`, Infinity while it scores on none; the higher score on a
+ * tie). While nobody is scoring, the highest score; null if nobody has scored.
+ * A top scorer that has stopped scoring is not ahead of a side that will
+ * overtake it: the first to reach the target wins, not the highest score.
+ */
+export function soonestKeyWin<S extends { score: number; eta: number }>(sides: Iterable<S>): S | null {
+  let best: S | null = null;
+  for (const s of sides) {
+    if (s.eta === Infinity && s.score <= 0) continue;
+    if (!best || s.eta < best.eta || (s.eta === best.eta && s.score > best.score)) best = s;
+  }
+  return best;
+}
+
+/** Ticks until team `t` wins on key nests at its current rate: Infinity while it scores on none. */
+export function keyEta(w: World, t: number): number {
+  const rate = keyRate(w, t);
+  return rate > 0 ? Math.ceil(Math.max(0, keyTarget(w) - w.keyScore[t]) / rate) : Infinity;
+}
+
 /** The team with the highest key-nest score among the living, or -1 if nobody has scored. */
 function keyLeader(w: World, alive: (t: number) => boolean): number {
   let best = -1;
@@ -353,8 +375,10 @@ export interface DominationStatus {
 /** The team currently dominating, or null. */
 export function dominationStatus(w: World): DominationStatus | null {
   if (w.keys.length) {
-    // Key nests: the leading scorer, once anyone has scored.
-    const lead = keyLeader(w, (t) => teamFace(w, t) >= 0);
+    // Key nests: the side soonest to win at its rate, else the top scorer (#250).
+    const sides: { t: number; score: number; eta: number }[] = [];
+    for (let t = 0; t < w.keyScore.length; t++) if (teamFace(w, t) >= 0) sides.push({ t, score: w.keyScore[t], eta: keyEta(w, t) });
+    const lead = soonestKeyWin(sides)?.t ?? -1;
     if (lead < 0) return null;
     const target = keyTarget(w);
     const rate = keyRate(w, lead);

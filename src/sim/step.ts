@@ -59,8 +59,11 @@ export function step(w: World, commands: readonly Command[]): void {
     }
   }
   if (w.tick === ESCALATION.start) pushFx(w, 'escalation', 0, 0, -1);
-  if (w.tick % 15 === 0) checkVictory(w);
+  if (w.tick % VICTORY_EVERY === 0) checkVictory(w);
 }
+
+/** How often (ticks) the match checks for a winner, and key nests score. */
+const VICTORY_EVERY = 15;
 
 const blast: number[] = [];
 const hits: { j: number; d: number }[] = [];
@@ -236,7 +239,7 @@ function checkVictory(w: World): void {
   for (const t of aliveTeams) {
     if (nestsByTeam[t] >= w.domNeed(t)) {
       if (w.domTicks[t] === 0) pushFx(w, 'domStart', 0, 0, teamFace(w, t));
-      w.domTicks[t] += 15;
+      w.domTicks[t] += VICTORY_EVERY;
       if (w.domTicks[t] >= DOMINATION.ticks) {
         w.over = true;
         w.winnerTeam = t;
@@ -296,6 +299,81 @@ export function keyRate(w: World, t: number): number {
   return rate;
 }
 
+/** Key nests each team scores on now (#250), all teams in one pass over the key nests. */
+function keyRates(w: World): Int32Array {
+  if (rateScratch.length < w.keyScore.length) rateScratch = new Int32Array(w.keyScore.length);
+  rateScratch.fill(0);
+  for (const k of w.keys) if (keyScoring(w, k)) rateScratch[keyTeam(w, k)]++;
+  return rateScratch;
+}
+let rateScratch = new Int32Array(0);
+
+/**
+ * Ticks until a side `togo` short of the target gets there at `rate` (#250):
+ * scores land only on the victory checks (every VICTORY_EVERY ticks), so this
+ * is the tick of the check that takes it over, not togo / rate. Infinity at
+ * rate 0.
+ */
+function ticksToTarget(w: World, togo: number, rate: number): number {
+  if (rate <= 0) return Infinity;
+  if (togo <= 0) return 0;
+  const checks = Math.ceil(togo / (VICTORY_EVERY * rate));
+  return VICTORY_EVERY - (w.tick % VICTORY_EVERY) + VICTORY_EVERY * (checks - 1);
+}
+
+/** Ticks until team `t` wins on key nests at its current rate: Infinity while it scores on none. */
+export function keyEta(w: World, t: number): number {
+  return ticksToTarget(w, keyTarget(w) - w.keyScore[t], keyRate(w, t));
+}
+
+/** A side in a key-nest race: its score, the key nests it scores on now, and its keyEta. */
+export interface KeySide {
+  score: number;
+  rate: number;
+  eta: number;
+}
+
+/**
+ * Whether side `a` is ahead of `b` in a key-nest race (#250): it wins sooner at
+ * its rate. If both would cross the target on the same check, the sim gives the
+ * win to the higher score at that check, so that decides it; while neither is
+ * scoring, the higher score now. A top scorer that has stopped scoring is not
+ * ahead of a side that will overtake it.
+ */
+function keyAhead(a: KeySide, b: KeySide): boolean {
+  if (a.eta !== b.eta) return a.eta < b.eta;
+  if (a.eta === Infinity) return a.score > b.score;
+  const at = Math.ceil(a.eta / VICTORY_EVERY) * VICTORY_EVERY;
+  return a.score + a.rate * at > b.score + b.rate * at;
+}
+
+/**
+ * The side to headline in a key-nest race (#250): the one soonest to win at its
+ * rate (see keyAhead); null if nobody has scored or is scoring.
+ */
+export function soonestKeyWin<S extends KeySide>(sides: Iterable<S>): S | null {
+  let best: S | null = null;
+  for (const s of sides) {
+    if (s.eta === Infinity && s.score <= 0) continue;
+    if (!best || keyAhead(s, best)) best = s;
+  }
+  return best;
+}
+
+/** The team to headline among those `alive` (soonestKeyWin), with its race. */
+function keyHeadline(w: World, alive: (t: number) => boolean): (KeySide & { t: number }) | null {
+  const rates = keyRates(w);
+  const target = keyTarget(w);
+  let best: (KeySide & { t: number }) | null = null;
+  for (let t = 0; t < w.keyScore.length; t++) {
+    const score = w.keyScore[t], rate = rates[t];
+    if ((score <= 0 && rate === 0) || !alive(t)) continue;
+    const s = { t, score, rate, eta: ticksToTarget(w, target - score, rate) };
+    if (!best || keyAhead(s, best)) best = s;
+  }
+  return best;
+}
+
 /** The team with the highest key-nest score among the living, or -1 if nobody has scored. */
 function keyLeader(w: World, alive: (t: number) => boolean): number {
   let best = -1;
@@ -306,12 +384,14 @@ function keyLeader(w: World, alive: (t: number) => boolean): number {
 /**
  * Key nests (#87), king of the hill: each team scores for every key nest it
  * holds uncontested, and the first to keyTarget wins (the higher score, if two
- * get there in the same check). The leader past KEYS.threat is marked in
- * domTicks, so bots and the HUD treat it as dominating.
+ * get there in the same check). The side soonest to win (#250), once past
+ * KEYS.threat of the target, is marked in domTicks, so bots, the HUD and the
+ * music treat it as dominating: not a top scorer that has stopped scoring.
  */
 function keyVictory(w: World, aliveTeams: Set<number>): void {
   const target = keyTarget(w);
-  for (const t of aliveTeams) w.keyScore[t] += 15 * keyRate(w, t);
+  const rates = keyRates(w);
+  for (const t of aliveTeams) w.keyScore[t] += VICTORY_EVERY * rates[t];
   const lead = keyLeader(w, (t) => aliveTeams.has(t));
   if (lead >= 0 && w.keyScore[lead] >= target) {
     w.over = true;
@@ -319,7 +399,8 @@ function keyVictory(w: World, aliveTeams: Set<number>): void {
     w.winReason = 'domination';
     return;
   }
-  const threat = lead >= 0 && w.keyScore[lead] >= KEYS.threat * target ? lead : -1;
+  const head = keyHeadline(w, (t) => aliveTeams.has(t));
+  const threat = head && head.score >= KEYS.threat * target ? head.t : -1;
   for (let t = 0; t < w.domTicks.length; t++) {
     if (t === threat) {
       if (w.domTicks[t] === 0) pushFx(w, 'domStart', 0, 0, teamFace(w, t));
@@ -353,13 +434,13 @@ export interface DominationStatus {
 /** The team currently dominating, or null. */
 export function dominationStatus(w: World): DominationStatus | null {
   if (w.keys.length) {
-    // Key nests: the leading scorer, once anyone has scored.
-    const lead = keyLeader(w, (t) => teamFace(w, t) >= 0);
-    if (lead < 0) return null;
+    // Key nests: the side soonest to win at its rate, else the top scorer (#250).
+    const head = keyHeadline(w, (t) => teamFace(w, t) >= 0);
+    if (!head) return null;
     const target = keyTarget(w);
-    const rate = keyRate(w, lead);
-    const togo = Math.max(0, target - w.keyScore[lead]);
-    return { team: lead, face: teamFace(w, lead), left: Math.ceil(togo / Math.max(1, rate)), frac: togo / target, held: rate, need: w.keys.length, toBreak: rate, keys: true, paused: rate === 0 };
+    const togo = Math.max(0, target - head.score);
+    const left = head.rate > 0 ? head.eta : ticksToTarget(w, togo, 1);
+    return { team: head.t, face: teamFace(w, head.t), left, frac: togo / target, held: head.rate, need: w.keys.length, toBreak: head.rate, keys: true, paused: head.rate === 0 };
   }
   for (let t = 0; t < w.domTicks.length; t++) {
     if (w.domTicks[t] <= 0) continue;

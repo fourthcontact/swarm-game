@@ -294,11 +294,14 @@ function drawUnits(r: Renderer, w: World, o: SceneOpts): void {
     let size = UNIT_STATS[kind].size;
     if (wild && kind !== Kind.Colossus) size *= 1 + 0.06 * breath;
     let alpha = owner === NEUTRAL ? 200 : 255;
-    if (w.surge[i] > w.tick) {
-      // Mend's Surge glows green.
-      c = mixRgb(c, w.factions[owner]?.mods.mend ? MEND_RGB : WHITE, 0.25 * surgeGlow);
+    const surged = w.surge[i] > w.tick;
+    // Mend's Surge heals instead of speeding up (#54): a green glow, and no speed trail.
+    const mend = surged && !!w.factions[owner]?.mods.mend;
+    /** the trail's color: the unit's own, without the glow's flicker */
+    const trailC = c;
+    if (surged) {
+      c = mixRgb(c, mend ? MEND_RGB : WHITE, 0.25 * surgeGlow);
       size *= 1.15;
-      surgeStreak(r, w, i, x, y, size, c);
     }
     // Rift heat (#58): an ember glow that builds the longer they stand in it.
     if (w.heat[i]) {
@@ -311,6 +314,8 @@ function drawUnits(r: Renderer, w: World, o: SceneOpts): void {
     else if (w.state[i] === UNIT_RETREAT) alpha = 150;
     // Echo's ghosts: see-through.
     if (w.ghost[i]) alpha = 90;
+    // The trail is as faint as the unit it follows: a ghost's stays a ghost's.
+    if (surged && !mend) surgeStreak(r, w, i, x, y, size, trailC, alpha);
     // Veterans from level-3 nests: a touch bigger and brighter.
     if (w.vet[i]) {
       size *= 1.15;
@@ -366,19 +371,20 @@ function drawUnits(r: Renderer, w: World, o: SceneOpts): void {
  * standing still to fight shows none. One instance in its own pass, so it costs
  * next to nothing even with hundreds surging.
  */
-function surgeStreak(r: Renderer, w: World, i: number, x: number, y: number, size: number, c: RGB): void {
+function surgeStreak(r: Renderer, w: World, i: number, x: number, y: number, size: number, c: RGB, alpha: number): void {
   const vx = w.vx[i], vy = w.vy[i];
   const sp2 = vx * vx + vy * vy;
   if (sp2 < STREAK_MIN_SP2) return;
   const sp = Math.sqrt(sp2);
   // Streak fades in with speed; its length is how far it goes in STREAK_SECS, capped.
-  const f = Math.min(1, (sp - STREAK_MIN_SP) / STREAK_FULL_SP);
+  const f = Math.min(1, (sp - STREAK_MIN_SP) / (STREAK_FULL_SP - STREAK_MIN_SP));
   const len = Math.min(sp * STREAK_SECS, STREAK_MAX_LEN) + size * 0.5;
   const k = -len / sp;
-  r.streak(x, y, vx * k, vy * k, size * 0.62, c[0], c[1], c[2], Math.round(255 * f));
+  r.streak(x, y, vx * k, vy * k, size * 0.62, c[0], c[1], c[2], Math.round(alpha * f));
 }
 const STREAK_MIN_SP = 10;
 const STREAK_MIN_SP2 = STREAK_MIN_SP * STREAK_MIN_SP;
+/** speed (px/s) at which the trail is at full strength */
 const STREAK_FULL_SP = 50;
 const STREAK_SECS = 0.28;
 const STREAK_MAX_LEN = 40;

@@ -4,7 +4,7 @@ import { newRun, type RunState } from '../src/campaign/run';
 import { KEYS, Kind, NEUTRAL, SURGE, TICK_HZ } from '../src/sim/constants';
 import { generateMap } from '../src/sim/mapgen';
 import { createWorld, mapParamsOf } from '../src/sim/setup';
-import { dominationStatus, keyTarget, step } from '../src/sim/step';
+import { dominationStatus, keyEta, keyTarget, soonestKeyWin, step } from '../src/sim/step';
 import { removeUnit, spawnUnit, type World } from '../src/sim/world';
 
 // Conquest and Domination play differently (#87): key nests, and a late Bloom surge.
@@ -132,6 +132,44 @@ describe('key nests (#87)', () => {
     w.keyScore[w.teamOf[me]] = 1500;
     for (const f of w.factions) if (f.team === w.teamOf[rival]) f.eliminated = true;
     expect(dominationStatus(w)?.team).toBe(w.teamOf[me]);
+  });
+
+  it('headlines the side soonest to win, not a top scorer that has stopped scoring (#250)', () => {
+    const [r, id] = nodeOf('domination');
+    const w = createWorld(nodeSetup(r, id));
+    const me = w.factions.findIndex((f) => f.human);
+    const rival = w.factions.findIndex((f, i) => f.active && i !== me && i !== NEUTRAL && w.teamOf[i] !== w.teamOf[me]);
+    empty(w);
+    w.keySealUntil = 0;
+    for (const k of w.keys) Object.assign(w.nests[k], { owner: me, controller: me, control: 1, contested: false });
+    const target = keyTarget(w);
+    // The rival is two seconds from winning but holds no key nest; we hold them all.
+    w.keyScore[w.teamOf[rival]] = target - 2 * TICK_HZ;
+    // Past the threat line, so the sim marks a threat at all.
+    w.keyScore[w.teamOf[me]] = Math.round(target * 0.6);
+    const ds = dominationStatus(w)!;
+    expect(ds.team).toBe(w.teamOf[me]);
+    expect(ds.paused).toBeFalsy();
+    expect(ds.left).toBe(keyEta(w, w.teamOf[me]));
+    // The sim marks the same side as the threat, so bots go after it, not the stalled top scorer.
+    run(w, 15);
+    expect(w.domTicks[w.teamOf[me]]).toBeGreaterThan(0);
+    expect(w.domTicks[w.teamOf[rival]]).toBe(0);
+    // The countdown lands on the tick the win does: scores only land on the victory checks.
+    const left = dominationStatus(w)!.left;
+    run(w, left - 1);
+    expect(w.over).toBe(false);
+    run(w, 1);
+    expect(w.winnerTeam).toBe(w.teamOf[me]);
+  });
+
+  it('picks between sides as the sim would (#250)', () => {
+    // Nobody scoring: the top scorer; nobody scored: nobody.
+    expect(soonestKeyWin([{ score: 10, rate: 0, eta: Infinity }, { score: 30, rate: 0, eta: Infinity }])?.score).toBe(30);
+    expect(soonestKeyWin([{ score: 0, rate: 0, eta: Infinity }])).toBeNull();
+    // Both cross on the same check (so the same eta): the higher score at that check wins, 80 + 3·15 over 100 + 15.
+    const a = { score: 100, rate: 1, eta: 4 }, b = { score: 80, rate: 3, eta: 4 };
+    expect(soonestKeyWin([a, b])).toBe(b);
   });
 
   it('as the seal opens, a key nest gets back the guards killed while it was sealed', () => {

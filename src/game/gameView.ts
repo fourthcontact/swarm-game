@@ -154,6 +154,8 @@ export class GameView {
   private mask = new Uint8Array(MAX_UNITS);
   private spawnSeen: number[] = [];
   private domSecs = -1;
+  /** the side the domination countdown counts for */
+  private domTeam = -1;
   private siegeSecs = -1;
   private frame = 0;
   /** supply state last frame, to announce hitting the cap once */
@@ -226,12 +228,15 @@ export class GameView {
     this.updateBeacon(time);
     this.updateIntro();
     this.s.sfx.update(dt, w, this.human, this.result ? 'ended' : this.session.paused ? 'paused' : 'play');
-    // Domination countdown ticks in the last ten seconds.
+    // Domination countdown ticks in the last ten seconds, while the side it counts for scores.
+    // A new side taking over the countdown starts its own: no tick on the switch (#250).
     const ds = this.result ? null : dominationStatus(w);
-    const secs = ds ? Math.ceil(ds.left / TICK_HZ) : -1;
-    if (secs !== this.domSecs) {
-      if (ds && !ds.paused && secs <= 10 && secs > 0) this.s.sfx.domTick(1 - secs / 10, ds.team === w.teamOf[this.human]);
+    const secs = ds && !ds.paused ? Math.ceil(ds.left / TICK_HZ) : -1;
+    const team = ds ? ds.team : -1;
+    if (secs !== this.domSecs || team !== this.domTeam) {
+      if (ds && team === this.domTeam && secs <= 10 && secs > 0) this.s.sfx.domTick(1 - secs / 10, ds.team === w.teamOf[this.human]);
       this.domSecs = secs;
+      this.domTeam = team;
     }
     // Holding the line (#67): the clock ticks through its last ten seconds.
     const sg = this.result ? null : w.siege;

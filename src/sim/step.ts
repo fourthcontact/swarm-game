@@ -1,6 +1,6 @@
 import { siegeVictory } from './siege';
 import { BALANCE, DOMINATION, DT, KEYS, ENERGY, ESCALATION, POWER, TERRAIN, VARIANTS, escalation, NEUTRAL, NEUTRAL_TEAM, NUM_FACTIONS, TICK_HZ } from './constants';
-import { applyCommand, type Command } from './commands';
+import { applyCommand, REJECTS, type Command } from './commands';
 import { updateCombat, resolveDamage } from './combat';
 import { updateMovement } from './movement';
 import { updateNests } from './nests';
@@ -19,9 +19,16 @@ export function step(w: World, commands: readonly Command[]): void {
   w.beamCount = 0;
   w.px.set(w.x.subarray(0, w.n));
   w.py.set(w.y.subarray(0, w.n));
+  // The opening (#235): the world waits for GO; orders sent early do nothing.
+  if (w.tick <= w.opening) return;
 
   w.grid.build(w);
-  for (const c of commands) applyCommand(w, c);
+  // a command that does nothing says why, for its sender's pending marker (#161): fx are render output, never hashed
+  commands.forEach((c, i) => {
+    const why = applyCommand(w, c);
+    // (a garbage command from the wire may not even have a p)
+    if (why) pushFx(w, 'cmdFail', 0, 0, Number.isInteger(c?.p) ? c.p : -1, i, REJECTS.indexOf(why));
+  });
   for (const b of w.bots) b.update(w);
   updateEvents(w);
 
@@ -186,10 +193,11 @@ function checkVictory(w: World): void {
   if (w.endless) return;
   // Hold the line (#67): only the siege decides it.
   if (w.siege && siegeVictory(w)) return;
-  // A stronghold (#100): a human taking the citadel wins, whoever else is left.
+  // A stronghold (#100): a human's side taking the citadel wins, whoever else is left
+  // (a bot ally's capture counts for its team, #222; the campaign has no allies).
   if (w.citadel >= 0) {
     const c = w.nests[w.citadel];
-    if (c.owner >= 0 && c.owner !== NEUTRAL && c.control >= 1 && w.factions[c.owner].human) {
+    if (c.owner >= 0 && c.owner !== NEUTRAL && c.control >= 1 && humanTeam(w, w.teamOf[c.owner])) {
       w.over = true;
       w.winnerTeam = w.teamOf[c.owner];
       w.winReason = 'citadel';
@@ -225,9 +233,8 @@ function checkVictory(w: World): void {
     return;
   }
 
-  const need = Math.ceil(w.nests.length * w.domShare);
   for (const t of aliveTeams) {
-    if (nestsByTeam[t] >= need) {
+    if (nestsByTeam[t] >= w.domNeed(t)) {
       if (w.domTicks[t] === 0) pushFx(w, 'domStart', 0, 0, teamFace(w, t));
       w.domTicks[t] += 15;
       if (w.domTicks[t] >= DOMINATION.ticks) {
@@ -241,6 +248,12 @@ function checkVictory(w: World): void {
       w.domTicks[t] = 0;
     }
   }
+}
+
+/** Whether a team has a human seat in the match. */
+function humanTeam(w: World, team: number): boolean {
+  for (let f = 0; f < NEUTRAL; f++) if (w.factions[f].active && w.factions[f].human && w.teamOf[f] === team) return true;
+  return false;
 }
 
 /** The faction that stands for a team: the live member holding the most nests. */
@@ -259,18 +272,27 @@ function teamFace(w: World, team: number): number {
   return best;
 }
 
-/** The key-nest score that wins (#87). */
+/** The key-nest score that wins (#87), counting at most KEYS.maxScored key nests (#232). */
 export function keyTarget(w: World): number {
-  return KEYS.points * w.keys.length;
+  return KEYS.points * Math.min(w.keys.length, KEYS.maxScored);
+}
+
+/** The team holding nest `id` (a key nest), or -1 while nobody does. */
+export function keyTeam(w: World, id: number): number {
+  const n = w.nests[id];
+  return n.owner >= 0 && n.owner !== NEUTRAL ? w.teamOf[n.owner] : -1;
+}
+
+/** Whether key nest `id` scores for its holder now: fully held and uncontested. */
+export function keyScoring(w: World, id: number): boolean {
+  const n = w.nests[id];
+  return keyTeam(w, id) >= 0 && n.control >= 1 && !n.contested;
 }
 
 /** Key nests team `t` holds fully and uncontested: what it scores per tick. */
-function keyRate(w: World, t: number): number {
+export function keyRate(w: World, t: number): number {
   let rate = 0;
-  for (const k of w.keys) {
-    const n = w.nests[k];
-    if (n.owner >= 0 && n.owner !== NEUTRAL && n.control >= 1 && !n.contested && w.teamOf[n.owner] === t) rate++;
-  }
+  for (const k of w.keys) if (keyScoring(w, k) && keyTeam(w, k) === t) rate++;
   return rate;
 }
 
@@ -343,7 +365,7 @@ export function dominationStatus(w: World): DominationStatus | null {
     if (w.domTicks[t] <= 0) continue;
     let held = 0;
     for (const n of w.nests) if (n.owner >= 0 && n.owner !== NEUTRAL && w.teamOf[n.owner] === t) held++;
-    const need = Math.ceil(w.nests.length * w.domShare);
+    const need = w.domNeed(t);
     const left = Math.max(0, DOMINATION.ticks - w.domTicks[t]);
     return { team: t, face: teamFace(w, t), left, frac: left / DOMINATION.ticks, held, need, toBreak: Math.max(1, held - need + 1) };
   }

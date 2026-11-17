@@ -133,8 +133,8 @@ export interface MapParams {
   typeWeights?: readonly number[];
   /** how nests are spread (default: picked by the seed) */
   layout?: MapLayout | 'random';
-  /** this player's capital is walled in: a warlord's stronghold (#100), or you, holding the line (#67) */
-  fortress?: number;
+  /** these players' capitals are walled in: a warlord's stronghold (#100), or the defenders holding the line (#67, #228) */
+  fortress?: number | readonly number[];
   /** the map's large-scale form (default: picked by the seed, to suit its terrain and caves) */
   form?: MapForm | 'random';
   /** what fills an open form (default: picked by the seed); cave forms ignore it, and noise replaces a cave belt */
@@ -629,7 +629,16 @@ export function generateMap(p: MapParams): MapSpec {
   const spec: MapSpec = { width: w, height: h, nests, terrain, events, layout, aspect: w / h, density, form, topology: cp?.topology, fill };
   // A fortress goes up last, on its own stream: the rest is the same map.
   // Every wild-swarm spawn must reach it too (Hold the line's waves come from them).
-  if (p.fortress !== undefined) spec.fortress = fortify(spec, p.fortress, p.size, new Rng(p.seed ^ 0x51f0a7), events.swarmSpawns) ?? undefined;
+  // Co-op Hold the line (#228) walls in every defender, each on a stream of its own.
+  const forts = p.fortress === undefined ? [] : typeof p.fortress === 'number' ? [p.fortress] : p.fortress;
+  // Earlier fortresses' walls are kept when a later one clears its ground.
+  const built = new Set<object>();
+  forts.forEach((f, i) => {
+    const before = new Set<object>(spec.terrain.walls);
+    const info = fortify(spec, f, p.size, new Rng((p.seed ^ 0x51f0a7) + i * 7919), events.swarmSpawns, built) ?? undefined;
+    for (const c of spec.terrain.walls) if (!before.has(c)) built.add(c);
+    if (i === 0) spec.fortress = info;
+  });
   if (p.keys) markKeys(spec, P, p.keys);
   return spec;
 }
@@ -637,7 +646,9 @@ export function generateMap(p: MapParams): MapSpec {
 /**
  * Key nests (#87): `count` neutral nests, each as far as it can be from the
  * nearest start (so nobody's natural expansion is one), at least KEYS.apart
- * from each other where the map has room. Their guards are KEYS.garrison times the usual.
+ * from each other. Where that doesn't fit them all (#232: up to seven), they're
+ * spread instead: each next one the nest farthest from every start and every
+ * key nest already picked. Their guards are KEYS.garrison times the usual.
  */
 function markKeys(spec: MapSpec, P: number, count: number): void {
   const caps = spec.nests.slice(0, P);
@@ -647,16 +658,26 @@ function markKeys(spec: MapSpec, P: number, count: number): void {
     .map((n, i) => ({ n, i, d: fromStarts(n) }))
     .filter((c) => c.n.player < 0)
     .sort((a, b) => b.d - a.d || a.i - b.i);
-  const picked: NestSpec[] = [];
-  // A crowded map may not fit them KEYS.apart apart: halve the gap until all are placed.
-  for (let apart = KEYS.apart; picked.length < count && apart >= 1; apart = Math.floor(apart / 2)) {
-    for (const c of pool) {
-      if (picked.length >= count) break;
-      if (c.n.key || picked.some((k) => d2(k, c.n) < apart * apart)) continue;
-      c.n.key = true;
-      c.n.garrison = Math.round(c.n.garrison * KEYS.garrison);
-      picked.push(c.n);
+  let picked: NestSpec[] = [];
+  for (const c of pool) {
+    if (picked.length >= count) break;
+    if (!picked.some((k) => d2(k, c.n) < KEYS.apart * KEYS.apart)) picked.push(c.n);
+  }
+  if (picked.length < count) {
+    // Spread them: farthest from every start and every key nest so far.
+    picked = [];
+    const near = pool.map((c) => c.d);
+    while (picked.length < Math.min(count, pool.length)) {
+      let best = -1;
+      for (let j = 0; j < pool.length; j++) if (!picked.includes(pool[j].n) && (best < 0 || near[j] > near[best])) best = j;
+      const k = pool[best].n;
+      picked.push(k);
+      pool.forEach((c, j) => (near[j] = Math.min(near[j], d2(c.n, k))));
     }
+  }
+  for (const k of picked) {
+    k.key = true;
+    k.garrison = Math.round(k.garrison * KEYS.garrison);
   }
 }
 

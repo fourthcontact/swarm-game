@@ -292,18 +292,34 @@ export function keyScoring(w: World, id: number): boolean {
   return keyTeam(w, id) >= 0 && n.control >= 1 && !n.contested;
 }
 
-/** Key nests team `t` holds fully and uncontested: what it scores per tick. */
-export function keyRate(w: World, t: number): number {
-  let rate = 0;
-  for (const k of w.keys) if (keyScoring(w, k) && keyTeam(w, k) === t) rate++;
-  return rate;
+/** Key nests team `t` holds fully and uncontested, whether or not it scores on them (#255). */
+export function keyHeld(w: World, t: number): number {
+  let held = 0;
+  for (const k of w.keys) if (keyScoring(w, k) && keyTeam(w, k) === t) held++;
+  return held;
 }
 
-/** Key nests each team scores on now (#250), all teams in one pass over the key nests. */
+/** What team `t` scores per tick: its held key nests if it holds the most, else 0 (#255). */
+export function keyRate(w: World, t: number): number {
+  return keyRates(w)[t];
+}
+
+/**
+ * Key nests each team scores on now (#250), in one pass over the key nests.
+ * Only the team holding strictly the most scores (#255): a lone edge holder
+ * scores only while nobody else holds one, and a tie at the top scores nothing.
+ */
 function keyRates(w: World): Int32Array {
   if (rateScratch.length < w.keyScore.length) rateScratch = new Int32Array(w.keyScore.length);
   rateScratch.fill(0);
   for (const k of w.keys) if (keyScoring(w, k)) rateScratch[keyTeam(w, k)]++;
+  let top = -1, tied = false;
+  for (let t = 0; t < w.keyScore.length; t++) {
+    if (!rateScratch[t]) continue;
+    if (top < 0 || rateScratch[t] > rateScratch[top]) (top = t), (tied = false);
+    else if (rateScratch[t] === rateScratch[top]) tied = true;
+  }
+  for (let t = 0; t < w.keyScore.length; t++) if (t !== top || tied) rateScratch[t] = 0;
   return rateScratch;
 }
 let rateScratch = new Int32Array(0);
@@ -382,8 +398,9 @@ function keyLeader(w: World, alive: (t: number) => boolean): number {
 }
 
 /**
- * Key nests (#87), king of the hill: each team scores for every key nest it
- * holds uncontested, and the first to keyTarget wins (the higher score, if two
+ * Key nests (#87), king of the hill: the team holding the most key nests
+ * uncontested scores for each of them (#255; a tie at the top scores nothing),
+ * and the first to keyTarget wins (the higher score, if two
  * get there in the same check). The side soonest to win (#250), once past
  * KEYS.threat of the target, is marked in domTicks, so bots, the HUD and the
  * music treat it as dominating: not a top scorer that has stopped scoring.

@@ -21,7 +21,7 @@ const WAVE_ICON: Record<WaveKind, string> = {
   pincer: svg('<path d="M1 8l4-4v3h6V4l4 4-4 4V9H5v3z"/>'),
   colossus: svg('<circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="2.4"/><circle cx="8" cy="8" r="2"/>'),
 };
-import { type NestPower, dominationBanner, dominationStatus, keyEta, keyRate, keyScoring, keyTarget, keyTeam, soonestKeyWin, UNIT_STATS, DOMINATION, KEYS, MAX_LEVEL, NEST_BLURB, NEST_NAMES, NEUTRAL, POWER, TICK_HZ, UPGRADE_COST, bloodCost, siphonWait, surgeCost } from '../sim/index';
+import { type NestPower, dominationBanner, dominationStatus, keyEta, keyHeld, keyRate, keyScoring, keyTarget, keyTeam, soonestKeyWin, UNIT_STATS, DOMINATION, KEYS, MAX_LEVEL, NEST_BLURB, NEST_NAMES, NEUTRAL, POWER, TICK_HZ, UPGRADE_COST, bloodCost, siphonWait, surgeCost } from '../sim/index';
 
 const TIPS = [
   'Drag to select your dots, right-click to send them. Tap on touch.',
@@ -657,18 +657,17 @@ export class Hud {
       return `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
     };
     const target = keyTarget(w);
-    const title = `Key nests, marked in gold on the map. Your side scores while it holds them uncontested: holding all ${w.keys.length} wins in ${clock(target / w.keys.length)}, holding one in ${clock(target)}. The bars show each side's score; the first to fill its bar wins.`;
+    const title = `Key nests, marked in gold on the map. Only the side holding the most of them uncontested scores; a tie at the top scores nothing. Holding all ${w.keys.length} wins in ${clock(target / w.keys.length)}, holding one alone in ${clock(target)}. The bars show each side's score; the first to fill its bar wins.`;
     if (this.keyStrip.title !== title) this.keyStrip.title = title;
     const myTeam = g.human >= 0 ? w.teamOf[g.human] : -1;
     const sealed = w.keySealUntil > w.tick;
-    let scoring = 0, fought = 0, sig = sealed ? 's' : '';
+    let fought = 0, sig = sealed ? 's' : '';
     const pips: string[] = [];
     for (const k of w.keys) {
       const n = w.nests[k];
       const team = keyTeam(w, k);
       const ours = team >= 0 && team === myTeam;
       const scores = keyScoring(w, k);
-      if (ours && scores) scoring++;
       if (ours && n.contested) fought++;
       // contested: rivals at it (held or not); taking: held, its control still filling
       const cls = [ours ? 'mine' : '', team >= 0 ? 'held' : '', n.contested ? 'contested' : team >= 0 && !scores ? 'taking' : ''].filter(Boolean).join(' ');
@@ -687,8 +686,11 @@ export class Hud {
       const out = t.members.every((f) => w.factions[f].eliminated);
       const score = w.keyScore[t.team];
       const rate = out ? 0 : keyRate(w, t.team);
-      return { t, face, out, score, rate, eta: out ? Infinity : keyEta(w, t.team) };
+      const held = out ? 0 : keyHeld(w, t.team);
+      return { t, face, out, score, rate, held, eta: out ? Infinity : keyEta(w, t.team) };
     });
+    // Holding key nests but not strictly the most scores nothing (#255): the titles and the strip say why.
+    const topHeld = Math.max(0, ...sides.map((s) => s.held));
     const bsig = sides.map((s) => `${s.t.team}:${s.face}:${s.t.mine ? 1 : 0}`).join('|');
     if (bsig !== this.barSig) {
       this.barSig = bsig;
@@ -727,7 +729,7 @@ export class Hud {
       row.classList.toggle('scoring', s.rate > 0);
       row.classList.toggle('alarm', near(s) || (this.flashUntil.get(s.t.team) ?? 0) > now);
       const who = teamName(w, g.human, s.face, this.layout);
-      row.title = `${who.name}: ${Math.floor((100 * s.score) / target)}% of the way to a key-nest win${s.rate > 0 ? `, on ${s.rate} key nest${s.rate > 1 ? 's' : ''} now: wins in ${clock(s.eta)}` : ''}`;
+      row.title = `${who.name}: ${Math.floor((100 * s.score) / target)}% of the way to a key-nest win${s.rate > 0 ? `, on ${s.rate} key nest${s.rate > 1 ? 's' : ''} now: wins in ${clock(s.eta)}` : s.held > 0 ? `; holds ${s.held} key nest${s.held > 1 ? 's' : ''}, ${s.held === topHeld ? 'tied for the most' : 'not the most'}, so it isn't scoring` : ''}`;
     });
     // The leader's time to win at its rate, in its color.
     const eta = lead && lead.rate > 0 ? clock(lead.eta) : '';
@@ -735,18 +737,24 @@ export class Hud {
     if (lead) this.ksEta.style.setProperty('--c', hex(lead.face));
     this.ksEta.title = lead && eta ? `${teamName(w, g.human, lead.face, this.layout).name} would win in ${eta} at this rate` : '';
 
+    const mineRate = myTeam >= 0 ? keyRate(w, myTeam) : 0;
+    const mineHeld = myTeam >= 0 ? keyHeld(w, myTeam) : 0;
     // A side about to win: the big banner says it (#254).
     const text = sealed
       ? `Key nests open in ${clock(w.keySealUntil - w.tick)}`
       : g.human < 0
           ? 'Key nests'
-          : scoring > 0
-            ? `Key nests: you score on ${scoring} of ${w.keys.length}`
-            : fought > 0
-              ? 'Key nests: contested, clear them to score'
-              : w.keys.some((k) => keyTeam(w, k) === myTeam)
-                ? 'Key nests: securing yours'
-                : 'Key nests: take one to score';
+          : mineRate > 0
+            ? `Key nests: you score on ${mineRate} of ${w.keys.length}`
+            : mineHeld > 0
+              ? mineHeld === topHeld
+                ? 'Key nests: tied, take another to score'
+                : 'Key nests: a rival holds more, take theirs'
+              : fought > 0
+                ? 'Key nests: contested, clear them to score'
+                : w.keys.some((k) => keyTeam(w, k) === myTeam)
+                  ? 'Key nests: securing yours'
+                  : 'Key nests: take one to score';
     if (this.ksText.textContent !== text) this.ksText.textContent = text;
   }
 

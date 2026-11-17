@@ -4,7 +4,9 @@ import { newRun, type RunState } from '../src/campaign/run';
 import { KEYS, Kind, NEUTRAL, SURGE, TICK_HZ } from '../src/sim/constants';
 import { generateMap } from '../src/sim/mapgen';
 import { createWorld, mapParamsOf } from '../src/sim/setup';
-import { dominationBanner, dominationStatus, keyEta, keyTarget, soonestKeyWin, step } from '../src/sim/step';
+import { dominationBanner, dominationStatus, keyEta, keyHeld, keyRate, keyTarget, soonestKeyWin, step } from '../src/sim/step';
+import { applyMode } from '../src/game/matchSetup';
+import { PERSONALITIES } from '../src/sim/ai/bot';
 import { removeUnit, spawnUnit, type World } from '../src/sim/world';
 
 // Conquest and Domination play differently (#87): key nests, and a late Bloom surge.
@@ -74,25 +76,19 @@ describe('key nests (#87)', () => {
     const keys = w.keys.map((k) => w.nests[k]);
     const target = keyTarget(w);
     expect(target).toBe(KEYS.points * keys.length);
-    // A split map: each side holds key nests and both score, at their own rates.
+    // A split map: the side holding more key nests scores on them; the other scores nothing (#255).
+    const split = keys.length > 2;
     keys.forEach((n, i) => Object.assign(n, { owner: i === 0 ? rival : me, controller: i === 0 ? rival : me, control: 1 }));
     run(w, 5 * TICK_HZ);
     const mine = w.keyScore[w.teamOf[me]], theirs = w.keyScore[w.teamOf[rival]];
-    expect(theirs).toBeGreaterThan(0);
-    expect(mine).toBeCloseTo(theirs * (keys.length - 1), -2);
-    const ds = dominationStatus(w)!;
-    expect(ds).toMatchObject({ team: w.teamOf[me], keys: true, held: keys.length - 1, need: keys.length, paused: false });
+    if (split) {
+      expect(mine).toBeGreaterThan(0);
+      expect(mine).toBeCloseTo(5 * TICK_HZ * (keys.length - 1), -2);
+      expect(dominationStatus(w)).toMatchObject({ team: w.teamOf[me], keys: true, held: keys.length - 1, need: keys.length, paused: false });
+    } else expect(mine).toBe(0);
+    expect(theirs).toBe(0);
     // Not yet a threat: nobody is past half.
     expect(w.domTicks[w.teamOf[me]]).toBe(0);
-    // A contested key nest stops scoring for its owner only.
-    for (let k = 0; k < 6; k++) spawnUnit(w, me, Kind.Dot, keys[0].x + k * 3, keys[0].y, keys[0].x, keys[0].y, 0);
-    for (let k = 0; k < 6; k++) spawnUnit(w, rival, Kind.Dot, keys[0].x - k * 3, keys[0].y, keys[0].x, keys[0].y, 0);
-    run(w, 15);
-    if (keys[0].contested) {
-      const held = w.keyScore[w.teamOf[rival]];
-      run(w, TICK_HZ);
-      if (keys[0].contested) expect(w.keyScore[w.teamOf[rival]]).toBe(held);
-    }
     empty(w);
     // Losing a key nest slows you, it doesn't reset you.
     const before = w.keyScore[w.teamOf[me]];
@@ -100,6 +96,7 @@ describe('key nests (#87)', () => {
     run(w, 30);
     expect(w.keyScore[w.teamOf[me]]).toBeGreaterThanOrEqual(before);
     // Hold them all: past half you're the threat, and at the target you win.
+    empty(w);
     for (const n of keys) Object.assign(n, { owner: me, controller: me, control: 1 });
     run(w, target);
     expect(w.over).toBe(true);
@@ -206,6 +203,83 @@ describe('key nests (#87)', () => {
         expect(generateMap(mapParamsOf(setup)).nests.filter((s) => s.key).length).toBe(setup.keys);
       }
     }
+  });
+});
+
+describe('key nests: only the side holding the most scores (#255)', () => {
+  /** A four-player skirmish Domination (four key nests), emptied and unsealed. */
+  function skirmish(): World {
+    const players = Array.from({ length: 4 }, (_, i) => ({ faction: i, team: i, human: false, bot: { difficulty: 1, personality: PERSONALITIES[i] } }));
+    const w = createWorld(applyMode({ seed: 255, size: 'medium', players }, 'domination'));
+    empty(w);
+    w.keySealUntil = 0;
+    return w;
+  }
+  const hold = (w: World, k: number, f: number) => Object.assign(w.nests[w.keys[k]], { owner: f, controller: f, control: 1, contested: false });
+  const rates = (w: World) => [0, 1, 2, 3].map((t) => keyRate(w, t));
+
+  it('a lone holder scores until a rival ties it, and the side with more takes over', () => {
+    const w = skirmish();
+    expect(w.keys.length).toBe(4);
+    // The edge grab: alone on one key nest, it scores.
+    hold(w, 0, 0);
+    expect(rates(w)).toEqual([1, 0, 0, 0]);
+    run(w, 2 * TICK_HZ);
+    const a = w.keyScore[0];
+    expect(a).toBeGreaterThan(0);
+    // One key nest each: nobody scores, and the HUD shows the leader paused.
+    hold(w, 1, 1);
+    expect(rates(w)).toEqual([0, 0, 0, 0]);
+    expect(keyHeld(w, 0)).toBe(1);
+    expect(keyEta(w, 0)).toBe(Infinity);
+    run(w, 2 * TICK_HZ);
+    expect(w.keyScore[0]).toBe(a);
+    expect(w.keyScore[1]).toBe(0);
+    expect(dominationStatus(w)).toMatchObject({ team: 0, paused: true });
+    // A second key nest: the rival scores on both, the edge holder on none.
+    hold(w, 2, 1);
+    expect(rates(w)).toEqual([0, 2, 0, 0]);
+    run(w, 2 * TICK_HZ);
+    expect(w.keyScore[0]).toBe(a);
+    expect(w.keyScore[1]).toBeCloseTo(2 * 2 * TICK_HZ, -2);
+  });
+
+  it('a contested key nest does not count toward the most', () => {
+    const w = skirmish();
+    hold(w, 0, 0);
+    hold(w, 1, 1);
+    hold(w, 2, 1);
+    w.nests[w.keys[2]].contested = true;
+    expect(keyHeld(w, 1)).toBe(1);
+    expect(rates(w)).toEqual([0, 0, 0, 0]);
+  });
+
+  it('with three sides: a tie at the top scores nothing, a strict lead scores its count', () => {
+    const w = skirmish();
+    hold(w, 0, 0);
+    hold(w, 1, 0);
+    hold(w, 2, 1);
+    hold(w, 3, 2);
+    expect(rates(w)).toEqual([2, 0, 0, 0]);
+    // 2 / 2 / 0: tied at the top.
+    hold(w, 3, 1);
+    expect(rates(w)).toEqual([0, 0, 0, 0]);
+  });
+
+  it('the threat mark follows who scores, not the top score', () => {
+    const w = skirmish();
+    const target = keyTarget(w);
+    w.keyScore[0] = Math.round(target * 0.6);
+    hold(w, 0, 0);
+    run(w, 15);
+    expect(w.domTicks[0]).toBeGreaterThan(0);
+    // Tied: nobody scores. The top score stays the headline, but the sim drops it as the threat only once someone else is soonest.
+    hold(w, 1, 1);
+    hold(w, 2, 1);
+    run(w, 15);
+    expect(rates(w)).toEqual([0, 2, 0, 0]);
+    expect(keyEta(w, 1)).toBeLessThan(Infinity);
+    expect(w.domTicks[0]).toBe(0);
   });
 });
 

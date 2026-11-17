@@ -159,7 +159,7 @@ export const MATCH_MODE_LABEL: Record<MatchMode, string> = {
 
 export const MATCH_MODE_BLURB: Record<MatchMode, string> = {
   conquest: 'wipe out the rivals, or hold most of the nests',
-  domination: 'score on the gold-ringed key nests',
+  domination: 'hold the most gold-ringed key nests to score',
   stronghold: 'a bot holds a walled citadel: take it to win',
   hold: 'walled in, hold your capital against the Bloom’s waves',
 };

@@ -102,7 +102,7 @@ function domination(w: World): Step[] {
       highlight: () => keys,
       focus: () => null,
     }),
-    tour(`Hold every key nest for ${KEYS.points / TICK_HZ} seconds to win, or fewer of them for longer. The bars at the top show each side's score: the first to fill its bar wins. Wiping out every rival wins too.`, {
+    tour(`Only the side holding the most key nests scores, one point for each; a tie at the top scores nothing. Hold every key nest for ${KEYS.points / TICK_HZ} seconds to win, or fewer of them for longer. The bars at the top show each side's score: the first to fill its bar wins. Wiping out every rival wins too.`, {
       highlight: () => keys,
     }),
     homeStep(

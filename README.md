@@ -123,6 +123,7 @@ npx vite-node scripts/choke-probe.ts 400 2 2            # A/B: chokepoint play o
 npx vite-node scripts/duel-probe.ts 12 2                # 1v1: each personality vs the human proxy (scripts/proxy.ts)
 npx vite-node scripts/dogpile-probe.ts 16 2             # FFA: share of bot attacks aimed at the proxy over time
 npx vite-node scripts/ffa-probe.ts                      # who attacks whom, knockout timing
+npx vite-node scripts/key-probe.ts 2,3,4 medium 20      # Domination: how matches end, winner behind on key nests
 npx vite-node scripts/collapse-probe.ts                 # how the first-out player loses
 npx vite-node scripts/kill-matrix.ts                    # winner vs loser kill shares
 npx vite-node scripts/upgrade-probe.ts turtler medium 40   # mirror match: eager upgrader vs never-upgrader
@@ -221,6 +222,7 @@ Replays only reproduce on the commit that recorded them (stored as `build`); the
 - **Selecting by type:** 1–4 keep Swarmers / Shields / Spears / Raiders from your group (or grab that type on screen), and Shift+1–4 drops a type. Double-click a unit to grab all of its type on screen. The type chips and counter wheel icons work the same way, and Tab cycles. Control groups are Ctrl+5–9 / 5–9.
 - **Escalation:** from minute 5, those comeback rules fade out over 3 minutes so every match reaches an endgame.
 - **Win** by eliminating every rival, or by holding 70% of the nests (60% on large maps) for 30 seconds.
+- **Domination** (skirmish mode, and campaign Domination battles) swaps the nest share for gold-ringed key nests, sealed for the first minute. Only the side holding the most key nests uncontested scores, a point a tick for each; on a tie at the top nobody scores (#255). The first side to the target wins: 45 seconds' worth per key nest, counting at most four.
 - **Tutorial** (main menu → Campaign): five short missions on hand-authored maps (moving and capturing, rally points and nest types, a first fight with Surge, upgrades with Barrage and Nova, then terrain, crystals and domination), about 10 minutes in all. It ends with a 1v1 against a Normal bot, after which the menu suggests a next step. Missions live in `src/game/tutorial.ts`; `tests/tutorial.test.ts` plays each one headlessly.
 - **Bots** have four difficulties (Easy to Brutal; only Brutal gets a production bonus) and four personalities. Every bot expands for the first 90 seconds, then:
   - **Rusher** attacks nearby players, commits hard, and Surges as soon as a fight starts.

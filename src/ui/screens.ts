@@ -1,5 +1,5 @@
 import { FACTION_HEX, FACTION_NAMES } from '../content/factions';
-import { DIFFICULTY_BLURBS, DIFFICULTY_NAMES, DIFFICULTY_ORDER, PERSONALITIES, type Personality } from '../sim/ai/bot';
+import { DIFFICULTY_BLURBS, DIFFICULTY_NAMES, DIFFICULTY_ORDER, PERSONALITIES, validDifficulty, type Personality } from '../sim/ai/bot';
 import { CAVE_LEVELS, EVENT_LEVELS, MAP_LAYOUTS, TERRAIN_LEVELS, type CaveLevel, type EventLevel, type MapLayout, type MapSize, type TerrainLevel } from '../sim/mapgen';
 import type { MatchSetup } from '../sim/setup';
 import type { World } from '../sim/world';
@@ -120,8 +120,9 @@ const QUICK_KEY = 'swarm.quickDifficulty';
 
 function quickDifficulty(): number {
   try {
-    const v = Number(localStorage.getItem(QUICK_KEY));
-    return Number.isInteger(v) && v >= 0 && v < DIFFICULTY_NAMES.length && localStorage.getItem(QUICK_KEY) !== null ? v : 1;
+    const raw = localStorage.getItem(QUICK_KEY);
+    const v = Number(raw);
+    return raw !== null && validDifficulty(v) ? v : 1;
   } catch {
     return 1;
   }

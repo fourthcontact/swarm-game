@@ -4,7 +4,7 @@ import { hex, type GameView } from '../game/gameView';
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 import { isMobile, LAYOUT_EVENT } from './mobile';
 import { MISSIONS } from '../game/tutorial';
-import { ALLY_MARK, possessive, sideOf, teamLayout, teamName, teamsLine, teamsList, verb, type TeamGroup, type TeamLayout } from './teams';
+import { ALLY_MARK, sideOf, teamLayout, teamName, teamsLine, teamsList, verb, type TeamGroup, type TeamLayout } from './teams';
 import { heartSlot, standingNests } from '../sim/heart';
 import { BOONS, SIEGE, WAVE_KINDS, waveSize } from '../sim/siege';
 import type { WaveKind } from '../sim/world';
@@ -21,7 +21,7 @@ const WAVE_ICON: Record<WaveKind, string> = {
   pincer: svg('<path d="M1 8l4-4v3h6V4l4 4-4 4V9H5v3z"/>'),
   colossus: svg('<circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="2.4"/><circle cx="8" cy="8" r="2"/>'),
 };
-import { type NestPower, dominationStatus, keyEta, keyRate, keyScoring, keyTarget, keyTeam, soonestKeyWin, UNIT_STATS, DOMINATION, KEYS, MAX_LEVEL, NEST_BLURB, NEST_NAMES, NEUTRAL, POWER, TICK_HZ, UPGRADE_COST, bloodCost, siphonWait, surgeCost } from '../sim/index';
+import { type NestPower, dominationBanner, dominationStatus, keyEta, keyRate, keyScoring, keyTarget, keyTeam, soonestKeyWin, UNIT_STATS, DOMINATION, KEYS, MAX_LEVEL, NEST_BLURB, NEST_NAMES, NEUTRAL, POWER, TICK_HZ, UPGRADE_COST, bloodCost, siphonWait, surgeCost } from '../sim/index';
 
 const TIPS = [
   'Drag to select your dots, right-click to send them. Tap on touch.',
@@ -79,7 +79,6 @@ export function formatTime(ticks: number): string {
 /** How long GO shows (#235), ticks. */
 const GO_TICKS = Math.round(1.2 * TICK_HZ);
 /** Domination (#239): a side this close to winning on key nests, at its rate, gets the alarm */
-const KEYS_NEAR = 20 * TICK_HZ;
 
 export class Hud {
   readonly el: HTMLDivElement;
@@ -135,8 +134,6 @@ export class Hud {
   private readonly ksText: HTMLElement;
   private keySig = '';
   private barSig = '';
-  /** sides already told they're about to win on key nests (#239), until they fall back */
-  private nearWin = new Set<number>();
   /** when each side's score bar stops flashing (ms, performance.now) */
   private flashUntil = new Map<number, number>();
   /** the side past KEYS.threat last update, to flash its bar as it gets there */
@@ -646,7 +643,8 @@ export class Hud {
    * about them. Next to the pips, a slim score bar per side (#239): its share
    * of the target, a small pip per key nest it scores on now, and the
    * leader's time to win at its rate. That replaces the nest share (it doesn't
-   * win here) and the big countdown panel; the alarm is a flash and a toast.
+   * win here); the big countdown panel comes back only in the last
+   * `KEYS.banner` of a side's run (#254), and its bar flashes.
    */
   private updateKeys(g: GameView): void {
     const w = g.world;
@@ -695,7 +693,10 @@ export class Hud {
     if (bsig !== this.barSig) {
       this.barSig = bsig;
       this.ksBars.innerHTML = sides
-        .map((s) => `<div class="kb${s.t.mine ? ' mine' : ''}" style="--c:${hex(s.face)}"><span class="kb-track"><i></i></span><span class="kb-rate"></span></div>`)
+        .map(
+          (s) =>
+            `<div class="kb${s.t.mine ? ' mine' : ''}" style="--c:${hex(s.face)}"><span class="kb-name">${teamName(w, g.human, s.face, this.layout).name}</span><span class="kb-track"><i></i></span><span class="kb-pct"></span><span class="kb-rate"></span></div>`,
+        )
         .join('');
     }
     this.ksBars.style.setProperty('--nk', String(w.keys.length));
@@ -709,12 +710,17 @@ export class Hud {
     // Flash a side's bar as it passes the threat line (the domStart toast says it).
     if (threat >= 0 && threat !== this.threatTeam) this.flashUntil.set(threat, now + 3000);
     this.threatTeam = threat;
-    const near = (s: (typeof sides)[number]) => s.eta <= KEYS_NEAR;
+    // Close to winning: the big banner's window (#254); eta is Infinity while a side doesn't score.
+    const near = (s: (typeof sides)[number]) => s.eta <= KEYS.banner;
     sides.forEach((s, k) => {
       const row = this.ksBars.children[k] as HTMLElement;
-      const fill = (row.children[0] as HTMLElement).children[0] as HTMLElement;
-      fill.style.width = `${Math.min(100, (100 * s.score) / target)}%`;
-      const rate = row.children[1] as HTMLElement;
+      const fill = (row.children[1] as HTMLElement).children[0] as HTMLElement;
+      const pct = Math.min(100, (100 * s.score) / target);
+      fill.style.width = `${pct}%`;
+      const pctEl = row.children[2] as HTMLElement;
+      const pctText = `${Math.floor(pct)}%`;
+      if (pctEl.textContent !== pctText) pctEl.textContent = pctText;
+      const rate = row.children[3] as HTMLElement;
       if (rate.childElementCount !== s.rate) rate.innerHTML = '<b></b>'.repeat(s.rate);
       row.classList.toggle('out', s.out);
       row.classList.toggle('lead', s === lead);
@@ -722,13 +728,6 @@ export class Hud {
       row.classList.toggle('alarm', near(s) || (this.flashUntil.get(s.t.team) ?? 0) > now);
       const who = teamName(w, g.human, s.face, this.layout);
       row.title = `${who.name}: ${Math.floor((100 * s.score) / target)}% of the way to a key-nest win${s.rate > 0 ? `, on ${s.rate} key nest${s.rate > 1 ? 's' : ''} now: wins in ${clock(s.eta)}` : ''}`;
-      // Close to winning: one toast as it gets there; again only once it falls well back.
-      if (near(s) && !this.nearWin.has(s.t.team)) {
-        this.nearWin.add(s.t.team);
-        this.flashUntil.set(s.t.team, now + 3000);
-        if (s.t.mine) this.toast(`${possessive(who)} key nests win in ${clock(s.eta)}! Hold them`, hex(s.face));
-        else this.toast(`${who.name} ${verb(who, 'wins', 'win')} in ${clock(s.eta)}! Take or contest their key nests`, '#ff5d73');
-      } else if (s.eta > KEYS_NEAR + 10 * TICK_HZ) this.nearWin.delete(s.t.team);
     });
     // The leader's time to win at its rate, in its color.
     const eta = lead && lead.rate > 0 ? clock(lead.eta) : '';
@@ -736,12 +735,10 @@ export class Hud {
     if (lead) this.ksEta.style.setProperty('--c', hex(lead.face));
     this.ksEta.title = lead && eta ? `${teamName(w, g.human, lead.face, this.layout).name} would win in ${eta} at this rate` : '';
 
-    const rival = lead && !lead.t.mine && near(lead) ? teamName(w, g.human, lead.face, this.layout) : null;
+    // A side about to win: the big banner says it (#254).
     const text = sealed
       ? `Key nests open in ${clock(w.keySealUntil - w.tick)}`
-      : rival && g.human >= 0
-        ? `${rival.name} ${verb(rival, 'wins', 'win')} in ${clock(lead!.eta)}: take or contest their key nests`
-        : g.human < 0
+      : g.human < 0
           ? 'Key nests'
           : scoring > 0
             ? `Key nests: you score on ${scoring} of ${w.keys.length}`
@@ -884,11 +881,19 @@ export class Hud {
       this.heartBar.classList.toggle('open', ward === 0);
     }
 
-    // Domination by nest share: a big countdown nobody can miss, with what to do about it.
-    // Key nests (#239) show their score bars in the top bar instead: no panel all match.
-    const ds = w.keys.length ? null : dominationStatus(w);
-    this.dom.style.display = ds ? 'block' : 'none';
-    if (ds) {
+    // Domination: a big countdown nobody can miss, with what to do about it.
+    // Key nests (#239) show their score bars in the top bar; the panel only in a side's last stretch (#254).
+    const ds = dominationStatus(w);
+    const banner = dominationBanner(ds);
+    this.dom.style.display = banner ? 'block' : 'none';
+    this.el.classList.toggle('dom-on', banner);
+    if (banner && w.keys.length) {
+      // Under the key strip, however many sides it shows; toasts go under the banner.
+      const top = this.el.getBoundingClientRect().top;
+      this.el.style.setProperty('--domtop', `${Math.round(this.top.getBoundingClientRect().bottom - top + 8)}px`);
+      this.el.style.setProperty('--toasttop', `${Math.round(this.dom.getBoundingClientRect().bottom - top + 8)}px`);
+    }
+    if (ds && banner) {
       const mine = ds.team === w.teamOf[g.human];
       const secs = Math.ceil(ds.left / TICK_HZ);
       const col = hex(ds.face);
@@ -896,11 +901,11 @@ export class Hud {
       this.dom.classList.toggle('urgent', secs <= 10);
       this.dom.classList.toggle('mine', mine);
       (this.dom.children[0] as HTMLElement).textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
-      const scoring = ds.paused ? '<b>not scoring</b>: no key nest held uncontested' : `scoring on ${ds.held} of ${ds.need} key nests`;
       // In a team match, name the team (#74): "Your team", "Magenta + Lime".
       const who = teamName(w, g.human, ds.face, layout);
       (this.dom.children[1] as HTMLElement).innerHTML = ds.keys
-        ? `<b>${who.name} ${verb(who, 'leads', 'lead')} on key nests</b> · ${scoring}${mine ? '' : ': take or contest theirs'}`
+        ? // Phones get the short line (#254): the banner shouldn't cover the fight it's about.
+          `<b>${who.name} ${verb(who, 'is', 'are')} about to win</b><span class="dom-more"> · ${mine ? 'hold your key nests' : 'take or contest their key nests'} (${ds.held} of ${ds.need})</span><span class="dom-less"> · ${mine ? 'hold them' : 'take their key nests'}</span>`
         : mine
           ? `<b>${who.name} ${verb(who, 'is', 'are')} dominating</b> · hold ${ds.need} of ${w.nests.length} nests`
           : `<b>${who.name} ${verb(who, 'is', 'are')} dominating</b> · take back ${ds.toBreak} nest${ds.toBreak > 1 ? 's' : ''} to stop it`;

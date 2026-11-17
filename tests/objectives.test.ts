@@ -4,7 +4,7 @@ import { newRun, type RunState } from '../src/campaign/run';
 import { KEYS, Kind, NEUTRAL, SURGE, TICK_HZ } from '../src/sim/constants';
 import { generateMap } from '../src/sim/mapgen';
 import { createWorld, mapParamsOf } from '../src/sim/setup';
-import { dominationStatus, keyEta, keyTarget, soonestKeyWin, step } from '../src/sim/step';
+import { dominationBanner, dominationStatus, keyEta, keyTarget, soonestKeyWin, step } from '../src/sim/step';
 import { removeUnit, spawnUnit, type World } from '../src/sim/world';
 
 // Conquest and Domination play differently (#87): key nests, and a late Bloom surge.
@@ -170,6 +170,17 @@ describe('key nests (#87)', () => {
     // Both cross on the same check (so the same eta): the higher score at that check wins, 80 + 3·15 over 100 + 15.
     const a = { score: 100, rate: 1, eta: 4 }, b = { score: 80, rate: 3, eta: 4 };
     expect(soonestKeyWin([a, b])).toBe(b);
+  });
+
+  it('shows the big banner only in a scoring side\'s last stretch (#254)', () => {
+    const ds = { team: 0, face: 0, held: 2, need: 3, toBreak: 2, frac: 0.1, keys: true, paused: false };
+    expect(dominationBanner(null)).toBe(false);
+    expect(dominationBanner({ ...ds, left: KEYS.banner })).toBe(true);
+    expect(dominationBanner({ ...ds, left: KEYS.banner + 1 })).toBe(false);
+    // Stopped scoring (no key nest held uncontested): gone, however close.
+    expect(dominationBanner({ ...ds, left: TICK_HZ, held: 0, paused: true })).toBe(false);
+    // Domination by nest share keeps its countdown all the way.
+    expect(dominationBanner({ ...ds, keys: undefined, paused: undefined, left: 60 * TICK_HZ })).toBe(true);
   });
 
   it('as the seal opens, a key nest gets back the guards killed while it was sealed', () => {

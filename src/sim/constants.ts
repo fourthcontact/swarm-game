@@ -318,6 +318,8 @@ export const KEYS = {
    * longer than `points` × this, however many players there are.
    */
   maxScored: 4,
+  /** the big countdown banner shows while the side soonest to win is this close and still scoring (#254) */
+  banner: 15 * TICK_HZ,
 };
 
 /**

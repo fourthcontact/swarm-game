@@ -1,5 +1,5 @@
 import { FACTION_RGB, WHITE, mixRgb, type RGB } from '../content/factions';
-import { bastionRange, keyTarget, DAMAGE_VS, DOMINATION, EVENTS, KEYS, Kind, NEUTRAL, NestType, POWER, TERRAIN, UNIT_FEEDING, UNIT_RETREAT, UNIT_STATS, UPGRADE_COST, VARIANTS } from '../sim/index';
+import { bastionRange, keyScoring, keyTarget, DAMAGE_VS, DOMINATION, EVENTS, KEYS, Kind, NEUTRAL, NestType, POWER, TERRAIN, UNIT_FEEDING, UNIT_RETREAT, UNIT_STATS, UPGRADE_COST, VARIANTS } from '../sim/index';
 import { HEART, heartSlot, standingNests } from '../sim/heart';
 import { SIEGE } from '../sim/siege';
 import { WILD_HEART, type Drop, type World } from '../sim/world';
@@ -125,14 +125,20 @@ function drawNests(r: Renderer, w: World, o: SceneOpts): void {
       // Above the outermost ring (key nests reach R×2 with their seal arc).
       const s = R * 0.6, cy = n.y - R * 2.2 - s * 1.3;
       const pts: [number, number][] = [[n.x, cy - s * 1.3], [n.x + s, cy], [n.x, cy + s * 1.3], [n.x - s, cy]];
-      const pulse = 0.5 + 0.5 * Math.sin(o.time * 2.4);
+      // #254: once held, its edge takes the holder's color, so the battlefield shows who holds what;
+      // it beats while that side scores on it, and holds still while it doesn't (still taking, or contested).
+      const held = n.owner >= 0 && n.owner !== NEUTRAL;
+      const scoring = held && keyScoring(w, n.id);
+      const edge = held ? c : KEY_RGB;
+      const pulse = scoring ? 0.5 + 0.5 * Math.sin(o.time * 5) : held ? 0.3 : 0.5 + 0.5 * Math.sin(o.time * 2.4);
+      const width = scoring ? 2.6 + 1.6 * pulse : 2.6;
       for (let k = 0; k < 4; k++) {
         const [x0, y0] = pts[k], [x1, y1] = pts[(k + 1) % 4];
-        r.beam(x0, y0, x1, y1, 20, 16, 8, 200, 5);
-        r.beam(x0, y0, x1, y1, KEY_RGB[0], KEY_RGB[1], KEY_RGB[2], Math.round(200 + 55 * pulse), 2.6);
+        r.beam(x0, y0, x1, y1, 20, 16, 8, 200, width + 2.4);
+        r.beam(x0, y0, x1, y1, edge[0], edge[1], edge[2], Math.round((scoring ? 150 : 200) + (scoring ? 105 : 55) * pulse), width);
       }
       // its holder's color at the heart of it, once it's held
-      if (n.owner >= 0 && n.owner !== NEUTRAL) r.unit(n.x, cy, s * 0.9, c[0], c[1], c[2], 255);
+      if (held) r.unit(n.x, cy, s * 0.9, c[0], c[1], c[2], 255);
     }
 
     // An ally's nest (#74): a chevron above it, so it reads as friendly by shape, not just colour.

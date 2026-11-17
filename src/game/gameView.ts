@@ -9,7 +9,7 @@ import { BOON_RGB, DROP_RGB as DROP_MARK, FERAL, KEY_RGB, drawWorld } from '../r
 import { BLOOM_GLOW, BLOOM_RGB, bloomNestMask, growthTarget, type BloomView } from '../render/bloom';
 import { isAlly, possessive, teamName, verb } from '../ui/teams';
 import type { AudioEngine } from '../audio/engine';
-import { DAMAGE_VS, KEYS, dominationStatus, keyTeam, MAX_LEVEL, MAX_UNITS, TICK_HZ, NEST_NAMES, NEUTRAL, POWER, POWER_NEST, supplyCap, type MatchSetup, type NestPower } from '../sim/index';
+import { DAMAGE_VS, KEYS, dominationStatus, keyScoring, keyTeam, MAX_LEVEL, MAX_UNITS, TICK_HZ, NEST_NAMES, NEUTRAL, POWER, POWER_NEST, supplyCap, type MatchSetup, type NestPower } from '../sim/index';
 import { barrageLaunch, feedNeed, hasPower, novaRadius, powerBoost, siphonWait, surgeCost } from '../sim/commands';
 import { inArmy, type Nest, type World } from '../sim/world';
 import { placingOf, type Placing } from './standing';
@@ -582,7 +582,8 @@ export class GameView {
       const c = w.nests[w.citadel];
       marks.push([c.x, c.y, FACTION_RGB[this.warlord?.faction ?? c.owner] ?? WHITE]);
     }
-    for (const k of this.keyArrows()) marks.push([w.nests[k].x, w.nests[k].y, KEY_RGB, 4]);
+    // A key nest a rival scores on points in its color (#254): an off-screen hold is never invisible.
+    for (const k of this.keyArrows()) marks.push([w.nests[k].x, w.nests[k].y, keyScoring(w, k) ? (FACTION_RGB[w.nests[k].owner] ?? KEY_RGB) : KEY_RGB, 4]);
     // Your home, at the start (#235).
     const you = this.youAt;
     if (you) marks.push([you.x, you.y, FACTION_RGB[this.human] ?? WHITE]);
@@ -615,7 +616,8 @@ export class GameView {
 
   /**
    * Key nests to point at off screen (#232): once the seal opens, the
-   * KEY_ARROWS off-screen ones nearest the view's center that your side doesn't hold.
+   * KEY_ARROWS off-screen ones your side doesn't hold: those a rival scores on
+   * first (#254), then the nearest the view's center.
    */
   private keyArrows(): number[] {
     const w = this.world;
@@ -626,7 +628,7 @@ export class GameView {
     const d2 = (k: number) => (w.nests[k].x - cx) ** 2 + (w.nests[k].y - cy) ** 2;
     return w.keys
       .filter((k) => (keyTeam(w, k) < 0 || keyTeam(w, k) !== myTeam) && this.edgeOf(w.nests[k].x, w.nests[k].y))
-      .sort((a, b) => d2(a) - d2(b) || a - b)
+      .sort((a, b) => Number(keyScoring(w, b)) - Number(keyScoring(w, a)) || d2(a) - d2(b) || a - b)
       .slice(0, KEY_ARROWS);
   }
 

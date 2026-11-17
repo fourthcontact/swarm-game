@@ -431,6 +431,16 @@ export interface DominationStatus {
   paused?: boolean;
 }
 
+/**
+ * Key nests (#254): show the big countdown banner? Only while the side soonest
+ * to win is within `KEYS.banner` of it and still scoring; it goes the moment
+ * that side stops. Domination by nest share always shows it.
+ */
+export function dominationBanner(ds: DominationStatus | null): boolean {
+  if (!ds) return false;
+  return !ds.keys || (!ds.paused && ds.left <= KEYS.banner);
+}
+
 /** The team currently dominating, or null. */
 export function dominationStatus(w: World): DominationStatus | null {
   if (w.keys.length) {

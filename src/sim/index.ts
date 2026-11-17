@@ -1,6 +1,6 @@
 export * from './constants';
 export { World, UNIT_FEEDING, UNIT_RETREAT, type Nest, type Faction, type FxEvent } from './world';
-export { step, dominationStatus, keyEta, keyRate, keyScoring, keyTarget, keyTeam, soonestKeyWin, type DominationStatus } from './step';
+export { step, dominationBanner, dominationStatus, keyEta, keyRate, keyScoring, keyTarget, keyTeam, soonestKeyWin, type DominationStatus } from './step';
 export { bastionRange, supplyCap } from './nests';
 export { bloodCost, siphonWait, surgeCost } from './commands';
 export { defaultMods, type FactionMods, type KindMods } from './mods';

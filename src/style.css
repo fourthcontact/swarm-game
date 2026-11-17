@@ -584,29 +584,33 @@ button.crown.on { background: rgba(255, 209, 102, 0.16); }
 .warlord-chip.below { top: 128px; }
 .hud.has-lord .toasts { top: 200px; }
 /* Domination's key nests (#232): one pip each, in its holder's color, gold while nobody holds it. */
-.keystrip { pointer-events: auto; display: flex; flex-direction: column; align-items: stretch; gap: 3px; margin-top: 5px; font-size: 12px; color: #f2c45c; }
+.keystrip { pointer-events: auto; display: flex; flex-direction: column; align-items: stretch; gap: 4px; margin-top: 6px; font-size: 13px; color: #f2c45c; }
 .keystrip[hidden] { display: none; }
 /* Key nests and the score (#239): pips for who holds what, a slim bar per side for who's winning. */
-.ks-row { display: flex; align-items: center; gap: 8px; }
+.ks-row { display: flex; align-items: center; gap: 10px; }
 .ks-text { text-align: center; }
 .hud.has-keys .nestshare { display: none; }
-.ks-bars { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.kb { display: flex; align-items: center; gap: 4px; }
-.kb-track { flex: 1; height: 5px; border-radius: 2px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.ks-bars { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.kb { display: flex; align-items: center; gap: 6px; }
+/* Desktop (#254): each bar says whose it is and how far along, so it never relies on color alone. */
+.kb-name { width: 6.5em; flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 700; color: var(--c); }
+.kb-pct { width: 2.8em; flex: none; text-align: right; font: 600 11px/1 ui-monospace, monospace; color: #dfe3f5; }
+.kb-track { flex: 1; height: 9px; border-radius: 3px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
 .kb-track i { display: block; height: 100%; width: 0; background: var(--c); opacity: 0.75; transition: width 0.4s linear; }
 .kb.scoring .kb-track i { opacity: 1; box-shadow: 0 0 6px var(--c); }
 /* Yours: outlined, so it never relies on color alone. */
 .kb.mine .kb-track { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.75); }
 .kb.out { opacity: 0.3; }
 /* How many key nests it scores on now: a pip each, in a column wide enough for all of them. */
-.kb-rate { display: flex; gap: 1px; width: calc(var(--nk, 3) * 5px); }
-.kb-rate b { width: 3px; height: 3px; margin: 0 0.5px; transform: rotate(45deg); background: var(--c); }
+.ks-bars.many .kb-track { height: 6px; }
+.kb-rate { display: flex; gap: 2px; width: calc(var(--nk, 3) * 7px); }
+.kb-rate b { width: 5px; height: 5px; margin: 0 0.5px; transform: rotate(45deg); background: var(--c); }
 .kb.alarm .kb-track { animation: kb-alarm 0.4s ease-in-out infinite alternate; }
 @keyframes kb-alarm { to { background: color-mix(in srgb, var(--c) 45%, transparent); box-shadow: 0 0 10px var(--c); } }
 @media (prefers-reduced-motion: reduce) { .kb.alarm .kb-track { animation: none; box-shadow: 0 0 10px var(--c); } }
-.ks-eta { --c: #f2c45c; min-width: 3.2em; font: 700 12px/1 ui-monospace, monospace; color: var(--c); text-shadow: 0 0 8px var(--c); }
-.ks-pips { display: flex; gap: 5px; }
-.ks-pips i { width: 9px; height: 9px; transform: rotate(45deg); border: 1.5px solid #f2c45c; background: transparent; box-sizing: border-box; }
+.ks-eta { --c: #f2c45c; min-width: 3.2em; font: 700 18px/1 ui-monospace, monospace; color: var(--c); text-shadow: 0 0 8px var(--c); }
+.ks-pips { display: flex; gap: 7px; }
+.ks-pips i { width: 13px; height: 13px; transform: rotate(45deg); border: 1.5px solid #f2c45c; background: transparent; box-sizing: border-box; }
 .ks-pips i.held { background: var(--c); box-shadow: 0 0 6px var(--c); }
 .ks-pips i.mine { border-color: #fff; }
 .ks-pips i.contested { animation: ks-contest 0.5s ease-in-out infinite alternate; }
@@ -615,7 +619,10 @@ button.crown.on { background: rgba(255, 209, 102, 0.16); }
 @media (prefers-reduced-motion: reduce) { .ks-pips i.contested { animation: none; opacity: 0.6; } }
 .keystrip.sealed .ks-pips i { opacity: 0.5; }
 /* The key strip makes the top bar taller: what sits under it moves down with it. */
-.hud.has-keys .toasts { top: 112px; }
+.hud.has-keys .toasts { top: 132px; }
+/* The near-win banner (#254) sits under the strip (measured, as the strip grows with the sides), and toasts under it. */
+.hud.has-keys.dom-on .dom { top: var(--domtop, 132px); }
+.hud.has-keys.dom-on .toasts { top: var(--toasttop, 240px); }
 .warlord-chip .citadel-goal { margin-top: 4px; font-size: 11px; font-weight: 600; color: #fff; }
 .warlord-chip .citadel-goal span { display: block; margin-top: 3px; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
 .warlord-chip .citadel-goal i { display: block; height: 100%; width: 0; background: var(--c); transition: width 0.3s; }
@@ -643,6 +650,7 @@ button.crown.on { background: rgba(255, 209, 102, 0.16); }
 .dom-time { font: 700 34px/1 ui-monospace, monospace; color: var(--c); text-shadow: 0 0 14px var(--c); letter-spacing: 1px; }
 .dom-text { margin-top: 4px; font-size: 14px; color: #dfe3f5; }
 .dom-text b { color: var(--c); }
+.dom-less { display: none; }
 .dom-bar { margin-top: 7px; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
 .dom-bar i { display: block; height: 100%; background: var(--c); box-shadow: 0 0 8px var(--c); transition: width 0.15s linear; }
 .dom.urgent { animation-duration: 0.35s; }
@@ -1438,14 +1446,15 @@ body.mobile.land .hud.has-keys .keystrip { margin-top: 3px; }
 /* Nest counts don't decide this mode, and the room goes to the score. */
 body.mobile.land .hud.has-keys .chips { justify-content: flex-end; }
 body.mobile.land .hud.has-keys .chip em { display: none; }
-body.mobile.land .ks-text { display: none; }
+body.mobile.land .ks-text, body.mobile.land .kb-name, body.mobile.land .kb-pct { display: none; }
 body.mobile.land .ks-row { gap: 5px; }
 body.mobile.land .ks-pips { gap: 3px; }
 body.mobile.land .ks-pips i { width: 6px; height: 6px; }
 body.mobile.land .ks-bars { gap: 1px; }
-body.mobile.land .kb-track { height: 3px; }
+body.mobile.land .kb-track { height: 3px; border-radius: 2px; }
+body.mobile.land .kb { gap: 4px; }
 body.mobile.land .ks-bars.many .kb-track { height: 2px; }
-body.mobile.land .kb-rate { width: calc(var(--nk, 3) * 4px); }
+body.mobile.land .kb-rate { gap: 1px; width: calc(var(--nk, 3) * 4px); }
 body.mobile.land .kb-rate b { width: 2px; height: 2px; }
 body.mobile.land .ks-eta { font-size: 10px; min-width: 2.8em; }
 body.mobile.land .toast { font-size: 13px; padding: 4px 12px; white-space: normal; max-width: var(--midw); }
@@ -1455,6 +1464,14 @@ body.mobile.land .heartbar { padding: 4px 10px 5px; }
 body.mobile.land .dom { top: calc(44px + var(--st)); left: var(--midx); min-width: min(320px, var(--midw)); padding: 4px 12px 6px; }
 body.mobile.land .dom-time { font-size: 26px; }
 body.mobile.land .dom.urgent .dom-time { font-size: 30px; }
+/* Key nests' banner on a phone (#254): smaller, one short line, so the fight under it stays visible. */
+body.mobile.land .hud.has-keys .dom { min-width: 0; max-width: min(300px, var(--midw)); padding: 2px 12px 4px; border-width: 1.5px; }
+body.mobile.land .hud.has-keys .dom-time { font-size: 20px; }
+body.mobile.land .hud.has-keys .dom.urgent .dom-time { font-size: 23px; }
+body.mobile.land .hud.has-keys .dom-text { font-size: 11px; margin-top: 1px; white-space: nowrap; }
+body.mobile.land .hud.has-keys .dom-bar { margin-top: 3px; height: 3px; }
+body.mobile.land .dom-more { display: none; }
+body.mobile.land .dom-less { display: inline; }
 body.mobile.land .team-banner { left: var(--midx); max-width: var(--midw); top: calc(48px + var(--st)); }
 body.mobile.land .boon { left: var(--midx); bottom: calc(8px + var(--sb)); width: min(560px, calc(var(--midw) - 8px)); padding: 8px 10px 10px; }
 body.mobile.land .boon-list { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }

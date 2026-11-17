@@ -2,7 +2,7 @@ import type { Camera } from './camera';
 import type { Terrain } from '../sim/terrain';
 import { bakeTerrain, TEX_SCALE } from './terrainTex';
 import { renderScale, resolution } from './resolution';
-import { BEAM_FS, BEAM_VS, BG_FS, BG_VS, GOO_COMP_FS, GOO_COMP_VS, GOO_FS, SHAPE_FS, SHAPE_VS, UNIT_FS, UNIT_VS } from './shaders';
+import { BEAM_FS, BEAM_VS, BG_FS, BG_VS, GOO_COMP_FS, GOO_COMP_VS, GOO_FS, SHAPE_FS, SHAPE_VS, STREAK_FS, STREAK_VS, UNIT_FS, UNIT_VS } from './shaders';
 
 function compile(gl: WebGL2RenderingContext, type: number, src: string): WebGLShader {
   const sh = gl.createShader(type)!;
@@ -85,6 +85,8 @@ export class Renderer {
 
   readonly units: InstanceBuffer;
   readonly beams: InstanceBuffer;
+  /** Surge streaks (#54), drawn under the units */
+  readonly streaks: InstanceBuffer;
   readonly shapes: InstanceBuffer;
   /** shapes drawn above units (fx rings, selection) */
   readonly overlay: InstanceBuffer;
@@ -107,6 +109,7 @@ export class Renderer {
   private terOn = false;
   private unitPass: Pass;
   private beamPass: Pass;
+  private streakPass: Pass;
   private shapePass: Pass;
   private overlayPass: Pass;
   /** the Bloom's goo (#94): soft blobs into a half-res field, then one pass that makes it liquid */
@@ -154,6 +157,8 @@ export class Renderer {
     this.overlay = new InstanceBuffer(7, 2, 256);
     this.unitPass = this.makePass(UNIT_VS, UNIT_FS, this.units, [3, 2]);
     this.beamPass = this.makePass(BEAM_VS, BEAM_FS, this.beams, [4, 1]);
+    this.streaks = new InstanceBuffer(5, 1, 512);
+    this.streakPass = this.makePass(STREAK_VS, STREAK_FS, this.streaks, [4, 1]);
     this.shapePass = this.makePass(SHAPE_VS, SHAPE_FS, this.shapes, [3, 4]);
     this.overlayPass = this.makePass(SHAPE_VS, SHAPE_FS, this.overlay, [3, 4]);
     this.gooBuf = new InstanceBuffer(5, 1, 1024);
@@ -303,6 +308,7 @@ export class Renderer {
   beginFrame(): void {
     this.units.count = 0;
     this.beams.count = 0;
+    this.streaks.count = 0;
     this.shapes.count = 0;
     this.overlay.count = 0;
     this.gooBuf.count = 0;
@@ -338,6 +344,7 @@ export class Renderer {
     this.drawPass(this.shapePass, camU, rot, px);
     this.drawGoo(camU, rot, px);
     this.drawPass(this.beamPass, camU, rot, px);
+    this.drawPass(this.streakPass, camU, rot, px);
     this.drawPass(this.unitPass, camU, rot, px);
     this.drawPass(this.overlayPass, camU, rot, px);
     gl.bindVertexArray(null);
@@ -384,6 +391,18 @@ export class Renderer {
     u.f32[i + 2] = x2;
     u.f32[i + 3] = y2;
     u.f32[i + 4] = width;
+    u.color(i, 0, r, g, b, a);
+  }
+
+  /** A Surge streak (#54): from (x, y) back by (tx, ty), `halfW` world units across each side. */
+  streak(x: number, y: number, tx: number, ty: number, halfW: number, r: number, g: number, b: number, a: number): void {
+    const u = this.streaks;
+    const i = u.alloc();
+    u.f32[i] = x;
+    u.f32[i + 1] = y;
+    u.f32[i + 2] = tx;
+    u.f32[i + 3] = ty;
+    u.f32[i + 4] = halfW;
     u.color(i, 0, r, g, b, a);
   }
 

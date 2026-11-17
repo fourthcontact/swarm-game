@@ -30,7 +30,7 @@ SWARM is a browser dot-swarm RTS: TypeScript, Vite, WebGL2, with a deterministic
 - Tutorial missions are in `src/game/tutorial.ts`. `tests/tutorial.test.ts` plays every mission headlessly, and it must keep passing. A changed or new mission needs its scripted playthrough updated or added there.
 - The procedural campaign is in `src/campaign/`. Its design doc is `docs/campaign.md`: read it before changing campaign structure, and update it when the design changes.
 - Campaign balance has its own tools: `run-probe`, `reward-probe` and the surrogate (README > Tools > Campaign balance). If you change battle code, re-run `scripts/balance/validate.ts`.
-- Saved progress lives in localStorage (`src/campaign/store.ts`, and the tutorial's `loadProgress`). Changes must still load saves from older builds.
+- Saved progress lives in localStorage (`src/campaign/store.ts`, and the tutorial's `loadProgress`). Aim to keep saves from older builds loading. If a change would break them and there's no reasonable workaround, ask before going ahead.
 
 ## TURN worker (`workers/turn/`)
 - It's a separate Cloudflare Worker with its own `package.json`. Deploy steps are in README > Multiplayer > The relay.

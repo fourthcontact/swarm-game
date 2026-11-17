@@ -322,7 +322,7 @@ function writeCtrl(w: Writer, c: Ctrl): void {
   w.u8(st | (c.bot ? 4 : 0));
   if (c.bot) {
     const pi = PERSONALITIES.indexOf(c.bot.personality);
-    if (pi < 0 || !Number.isInteger(c.bot.difficulty) || !validDifficulty(c.bot.difficulty)) throw new Error('codec: bad seat bot');
+    if (pi < 0 || !validDifficulty(c.bot.difficulty)) throw new Error('codec: bad seat bot');
     w.u8(c.bot.difficulty * 4 + pi);
   }
 }

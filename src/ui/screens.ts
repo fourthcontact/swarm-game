@@ -855,7 +855,7 @@ export function skirmishSetup(onStart: (setup: MatchSetup, scenario?: string) =>
     const t = e.target as HTMLSelectElement;
     const row = t.closest('.bot') as HTMLElement;
     const b = prefs.bots[Number(row.dataset.i)];
-    if (t.dataset.a === 'diff') b.difficulty = Number(t.value);
+    if (t.dataset.a === 'diff') (b.difficulty = Number(t.value)), (t.title = DIFFICULTY_BLURBS[b.difficulty] ?? '');
     if (t.dataset.a === 'pers') b.personality = t.value as Personality | 'random';
     if (t.dataset.a === 'team') {
       b.team = Number(t.value);

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BEGINNER, DIFFICULTY, DIFFICULTY_NAMES, DIFFICULTY_ORDER, type Bot } from '../src/sim/ai/bot';
 import { TICK_HZ } from '../src/sim/constants';
+import { seatToBot } from '../src/sim/seats';
 import { createWorld, type MatchSetup } from '../src/sim/setup';
 import { step } from '../src/sim/step';
 
@@ -61,4 +62,54 @@ describe('Beginner bot (#117)', () => {
     expect(turns).toEqual(new Set([0, 1, 2]));
   });
 
+  const owners = (w: ReturnType<typeof createWorld>, cycles: number) => {
+    const g = DIFFICULTY[BEGINNER].gentle!;
+    const out: number[] = [];
+    for (let k = 0; k < cycles; k++) {
+      w.tick = g.grace + k * (g.turn + g.rest);
+      out.push(w.bots.find((b) => open(b, w))?.faction ?? -1);
+    }
+    return out;
+  };
+
+  it('keeps the turn order when a Beginner is eliminated: no bot skipped or repeated', () => {
+    const w = createWorld(match(3));
+    const g = DIFFICULTY[BEGINNER].gentle!;
+    expect(owners(w, 6)).toEqual([1, 2, 3, 1, 2, 3]);
+    // bot 1 goes out during cycle 4 (bot 2's turn)
+    w.factions[1].eliminated = true;
+    w.factions[1].eliminatedTick = g.grace + 4 * (g.turn + g.rest) + 10;
+    expect(owners(w, 9)).toEqual([1, 2, 3, 1, 2, 3, 2, 3, 2]);
+  });
+
+  it("leaves Beginners with no player to fight out of the rotation (a player's ally)", () => {
+    const setup = match(3);
+    setup.players[1].team = 0; // bot 1 is the player's ally
+    const w = createWorld(setup);
+    expect(owners(w, 4)).toEqual([2, 3, 2, 3]);
+  });
+
+  it("treats a dropped player's seat bot as a bot, not a player", () => {
+    const w = createWorld(match(1));
+    expect(w.bots[0].gentleFacing(w)).toBe(true);
+    seatToBot(w, 0, { difficulty: 0, personality: 'expander' });
+    expect(w.bots.find((b) => b.faction === 1)!.gentleFacing(w)).toBe(false);
+  });
+
+  it('calls back groups still marching on a player when its turn ends', () => {
+    const w = createWorld(match(1));
+    const g = DIFFICULTY[BEGINNER].gentle!;
+    // play into the rest after the first turn
+    while (w.tick < g.grace + g.turn + 2 * TICK_HZ) step(w, []);
+    const target = w.nests.find((n) => n.owner === 0)!;
+    const mine = [...Array(w.n).keys()].filter((i) => w.alive[i] && w.owner[i] === 1);
+    expect(mine.length).toBeGreaterThan(0);
+    step(w, [{ t: 'move', p: 1, units: mine.map((i) => w.uid[i]), x: target.x, y: target.y, nest: target.id }]);
+    const at = (i: number) => (w.ox[i] - target.x) ** 2 + (w.oy[i] - target.y) ** 2 <= target.r ** 2;
+    expect(mine.filter(at).length).toBeGreaterThan(0);
+    // one think later, none still marching there
+    for (let k = 0; k < DIFFICULTY[BEGINNER].think + 1; k++) step(w, []);
+    const marching = mine.filter((i) => w.alive[i] && at(i) && (w.x[i] - target.x) ** 2 + (w.y[i] - target.y) ** 2 > (target.r + 90) ** 2);
+    expect(marching).toEqual([]);
+  });
 });

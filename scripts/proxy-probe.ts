@@ -68,6 +68,11 @@ function play(setup: MatchSetup, seat: number, s: Stats): void {
       if (c.t === 'upgrade') s.upgrades++;
     }
     step(w, cmds);
+    // Every tick, so a nest taken and lost between seconds still counts.
+    for (const n of w.nests) {
+      if (firstLoss < 0 && owners[n.id] === seat && n.owner !== seat) firstLoss = w.tick / TICK_HZ;
+      owners[n.id] = n.owner;
+    }
     countDeaths(w, (o) => (o === seat ? s.died : w.factions[o]?.active ? s.botDied : null));
     w.fx = [];
     w.deaths = [];
@@ -77,10 +82,6 @@ function play(setup: MatchSetup, seat: number, s: Stats): void {
       if (k >= 2 && first[0] < 0) first[0] = w.tick / TICK_HZ;
       if (k >= 3 && first[1] < 0) first[1] = w.tick / TICK_HZ;
       peak = Math.max(peak, w.unitCount[seat]);
-      for (const n of w.nests) {
-        if (firstLoss < 0 && owners[n.id] === seat && n.owner !== seat) firstLoss = w.tick / TICK_HZ;
-        owners[n.id] = n.owner;
-      }
       for (const p of setup.players) if (w.factions[p.faction].eliminated && !out.includes(p.faction)) out.push(p.faction);
     }
   }

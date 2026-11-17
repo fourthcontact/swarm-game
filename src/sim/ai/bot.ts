@@ -95,6 +95,40 @@ export const DIFFICULTY: readonly DifficultyKnobs[] = [
   },
 ];
 
+/** A player: a human seat that no bot is driving (a dropped player's seat bot is fair game). */
+const isPlayer = (w: World, f: number): boolean => f >= 0 && f < NEUTRAL && w.factions[f].human && !w.bots.some((b) => b.faction === f);
+
+/** Distance from a player's nest within which a gentle bot's dots count as arrived, not marching (#117). */
+const RECALL_NEAR = 90;
+
+/**
+ * Whose turn cycle `k` is among the gentle bots that face a player (#117):
+ * round-robin in faction order, each turn going to the next bot after the
+ * last one that was still in the match when its cycle began. Replayed from
+ * cycle 0, so an elimination doesn't skip a bot or repeat one.
+ */
+function turnOwner(w: World, g: Gentle, k: number): number {
+  const all = w.bots.filter((b) => b.gentleFacing(w)).map((b) => b.faction);
+  if (!all.length) return -1;
+  const cycle = g.turn + g.rest;
+  let at = -1;
+  for (let c = 0; c <= k; c++) {
+    const start = g.grace + c * cycle;
+    let next = -1;
+    for (let j = 1; j <= all.length; j++) {
+      const f = all[(at + j + all.length) % all.length];
+      const fa = w.factions[f];
+      if (!fa.eliminated || fa.eliminatedTick > start) {
+        next = (at + j + all.length) % all.length;
+        break;
+      }
+    }
+    if (next < 0) return -1;
+    at = next;
+  }
+  return all[at];
+}
+
 /** A gentle bot's personality: aggression toned down, the rest kept for variety. */
 const tame = (p: PersonalityKnobs): PersonalityKnobs => ({ ...p, enemy: Math.min(p.enemy, 1), reach: Math.min(p.reach, 1), reserve: Math.max(p.reserve, 0.25), eagerSurge: false });
 
@@ -312,9 +346,9 @@ export class Bot {
   /**
    * May this bot attack players' nests now? Always, unless it's gentle (#117):
    * then not before the grace period, and after it only in turns. Gentle bots
-   * share one rotation, so however many there are, one at a time goes after
-   * players, for `turn` ticks in every `turn + rest`. Derived from the tick, so
-   * snapshots carry nothing new.
+   * with a player to fight share one rotation, so however many there are, one
+   * at a time goes after players, for `turn` ticks in every `turn + rest`.
+   * Derived from the tick and elimination ticks, so snapshots carry nothing new.
    */
   private playersOpen(w: World): boolean {
     const g = this.d.gentle;
@@ -323,8 +357,53 @@ export class Bot {
     if (t < 0) return false;
     const cycle = g.turn + g.rest;
     if (t % cycle >= g.turn) return false;
-    const gentle = w.bots.filter((b) => b.d.gentle && !w.factions[b.faction].eliminated);
-    return Math.floor(t / cycle) % gentle.length === gentle.indexOf(this);
+    return turnOwner(w, g, Math.floor(t / cycle)) === this.faction;
+  }
+
+  /** Is this a gentle bot with a player to fight (one that takes turns)? */
+  gentleFacing(w: World): boolean {
+    return !!this.d.gentle && this.facesPlayer(w);
+  }
+
+  /** Has this bot a player (a human seat no bot is driving) as an enemy? */
+  private facesPlayer(w: World): boolean {
+    for (let f = 0; f < NEUTRAL; f++) if (w.factions[f].active && isPlayer(w, f) && w.hostile(f, this.faction)) return true;
+    return false;
+  }
+
+  /**
+   * Outside its turn, a gentle bot calls back groups still marching on a
+   * player's nest, so its attacks don't land on top of the next bot's (#117).
+   * Dots already at the nest (fighting there) finish the fight.
+   */
+  private recallFromPlayers(w: World, mine: Nest[]): void {
+    if (!mine.length) return;
+    const me = this.faction;
+    const groups = new Map<number, number[]>();
+    for (const n of w.nests) {
+      if (!isPlayer(w, n.owner) || !w.hostile(n.owner, me)) continue;
+      const near = (n.r + RECALL_NEAR) ** 2;
+      for (let i = 0; i < w.n; i++) {
+        if (!w.alive[i] || w.owner[i] !== me || w.engaged[i]) continue;
+        if ((w.ox[i] - n.x) ** 2 + (w.oy[i] - n.y) ** 2 > n.r * n.r) continue;
+        if ((w.x[i] - n.x) ** 2 + (w.y[i] - n.y) ** 2 <= near) continue;
+        let g = groups.get(n.id);
+        if (!g) groups.set(n.id, (g = []));
+        g.push(i);
+      }
+    }
+    for (const g of groups.values()) {
+      let cx = 0, cy = 0;
+      for (const i of g) (cx += w.x[i]), (cy += w.y[i]);
+      cx /= g.length;
+      cy /= g.length;
+      let home = mine[0], best = Infinity;
+      for (const n of mine) {
+        const d = (n.x - cx) ** 2 + (n.y - cy) ** 2;
+        if (d < best) (best = d), (home = n);
+      }
+      this.issue(w, { t: 'move', p: me, units: g.map((i) => w.uid[i]), x: home.x, y: home.y, nest: home.id });
+    }
   }
 
   /** Barrages already reacted to (by landing tick and spot). */
@@ -591,9 +670,10 @@ export class Bot {
     // A gentle bot leaves players alone outside its turn (#117).
     const gentle = this.d.gentle;
     const playersOpen = this.playersOpen(w);
+    if (gentle && !playersOpen) this.recallFromPlayers(w, mine);
     for (const n of w.nests) {
       if (n.owner >= 0 && w.teamOf[n.owner] === myTeam) continue;
-      const player = !!gentle && n.owner >= 0 && n.owner !== NEUTRAL && w.factions[n.owner].human;
+      const player = !!gentle && isPlayer(w, n.owner);
       if (player && !playersOpen) continue;
       if (this.cfg.passive) {
         if (n.owner >= 0 && n.owner !== NEUTRAL) continue;
@@ -615,9 +695,10 @@ export class Bot {
         value *= opening ? OPENING.enemy : this.p.enemy;
         // Picking on the weakest only pays with several rivals; in a
         // three-way it just hands the game to the third player.
-        if (n.owner === weakest && rivals > 3) value *= this.p.weakest;
+        // (Not a player, for a gentle bot: a beginner who's behind isn't piled on.)
+        if (!player && n.owner === weakest && rivals > 3) value *= this.p.weakest;
         // Third-party: a nest under attack by someone else is softened up.
-        if (n.contested && hostileNotOwner(n)) value *= this.p.vulture;
+        if (!player && n.contested && hostileNotOwner(n)) value *= this.p.vulture;
         // Gentle with players: they're worth less, and a beginner who's behind isn't piled on or finished off.
         if (player) value *= gentle!.players;
         else if (n.owner === leader) value *= leaderBonus;

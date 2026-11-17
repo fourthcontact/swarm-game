@@ -267,10 +267,10 @@ export function applyMode(s: MatchSetup, mode: MatchMode, o: { holder?: number; 
   }
 }
 
-/** Ready-made matches the menu suggests: the graduation 1v1, warm-ups, and what comes after. */
+/** The ready-made matches the menu suggests. */
 export type SuggestedMatch = 'normal1v1' | 'easy1v1' | 'beginner1v1' | 'ffa';
 
-/** Ready-made matches the menu suggests: the graduation 1v1 and what comes after. */
+/** Build a suggested match: the graduation 1v1, the Beginner and Easy warm-ups (#117), or the FFA that comes after. */
 export function quickSetup(kind: SuggestedMatch): MatchSetup {
   const p = loadPrefs();
   const others = [0, 1, 2, 3, 4, 5].filter((c) => c !== p.color);

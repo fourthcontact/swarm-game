@@ -36,7 +36,7 @@ import { DemoOverlay } from './ui/demo';
 import { Hud } from './ui/hud';
 import { ScreenAwake } from './ui/wakeLock';
 import { initUiMode, isMobile, markMobileNoticeSeen, onCellData, setUiMode, shouldShowMobileNotice } from './ui/mobile';
-import { buildSetup, campaignMenu, randomSetup, skirmishMenu, endButtons, endScreen, howToPlay, loadPrefs, mainMenu, menuCard, missionBriefing, missionDebrief, mobileNotice, NEXT_STEP_TEXT, pauseMenu, quickSetup, randomSeed, settingsScreen, skirmishSetup, tutorialMenu } from './ui/screens';
+import { buildSetup, campaignMenu, randomSetup, skirmishMenu, endButtons, endScreen, howToPlay, loadPrefs, mainMenu, menuCard, missionBriefing, missionDebrief, mobileNotice, NEXT_STEP_TEXT, pauseMenu, quickSetup, randomSeed, settingsScreen, skirmishSetup, tutorialMenu, type SuggestedMatch } from './ui/screens';
 import { creatureGrid } from './ui/creatures';
 import { BUILD } from './game/recording';
 import type { DesyncReport } from './net/desync';
@@ -420,6 +420,7 @@ class App {
             ? [
                 // The Normal 1v1 is the tutorial's last mission (#147): replay it there, tracked.
                 { label: 'Rematch Normal', primary: true, on: () => this.briefMission(MISSIONS.length - 1) },
+                { label: '1v1 vs Beginner', on: () => this.playSuggested('beginner1v1') },
                 { label: '1v1 vs Easy', on: () => this.playSuggested('easy1v1') },
               ]
             : [{ label: 'Play the 1v1', primary: true, on: () => this.briefMission(MISSIONS.length - 1) }];
@@ -429,7 +430,7 @@ class App {
     return null;
   }
 
-  private playSuggested(kind: 'normal1v1' | 'easy1v1' | 'ffa'): void {
+  private playSuggested(kind: SuggestedMatch): void {
     saveProgress({ ...loadProgress(), next: undefined });
     this.startGame(quickSetup(kind));
   }
@@ -1931,7 +1932,7 @@ class App {
           next: () => (won ? this.afterMission(i) : this.skipMission()),
           retry: () => this.playMission(i, 'restart'),
           menu: () => this.showMenu(),
-          easy: () => this.playSuggested('easy1v1'),
+          warmUp: () => this.playSuggested('beginner1v1'),
         }),
       );
       return;

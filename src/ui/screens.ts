@@ -1,5 +1,5 @@
 import { FACTION_HEX, FACTION_NAMES } from '../content/factions';
-import { DIFFICULTY_NAMES, PERSONALITIES, type Personality } from '../sim/ai/bot';
+import { DIFFICULTY_BLURBS, DIFFICULTY_NAMES, DIFFICULTY_ORDER, PERSONALITIES, type Personality } from '../sim/ai/bot';
 import { CAVE_LEVELS, EVENT_LEVELS, MAP_LAYOUTS, TERRAIN_LEVELS, type CaveLevel, type EventLevel, type MapLayout, type MapSize, type TerrainLevel } from '../sim/mapgen';
 import type { MatchSetup } from '../sim/setup';
 import type { World } from '../sim/world';
@@ -104,12 +104,17 @@ export function menuCard(text: string, buttons: { label: string; primary?: boole
 export const NEXT_STEP_TEXT: Record<NextStep, string> = {
   graduate: '<b>Next step:</b> your first real match. A 1v1 against a Normal bot on a small map.',
   ffa: '<b>Next step:</b> you beat a Normal bot. Try a 4-player free-for-all, where rivals fight each other too.',
-  rematch: '<b>Next step:</b> take on the Normal bot again, or warm up against Easy first.',
+  rematch: '<b>Next step:</b> take on the Normal bot again, or warm up first against a Beginner or Easy bot.',
 };
 
-export { buildSetup, loadPrefs, quickSetup, randomSeed, type SetupPrefs } from '../game/matchSetup';
+export { buildSetup, loadPrefs, quickSetup, randomSeed, type SetupPrefs, type SuggestedMatch } from '../game/matchSetup';
 
 // ---- skirmish sub-menu (#43) --------------------------------------------------
+
+/** `<option>`s for a bot difficulty picker, easiest first. */
+export function difficultyOptions(selected: number): string {
+  return DIFFICULTY_ORDER.map((k) => `<option value="${k}"${k === selected ? ' selected' : ''}>${DIFFICULTY_NAMES[k]}</option>`).join('');
+}
 
 const QUICK_KEY = 'swarm.quickDifficulty';
 
@@ -157,7 +162,8 @@ export function skirmishMenu(h: { quick: (difficulty: number) => void; custom: (
             <b>Quick match</b>
             <span>Random map and opponents</span>
             <label>Bot difficulty</label>
-            <div class="seg" data-a="diff">${DIFFICULTY_NAMES.map((d, k) => `<button data-v="${k}">${d}</button>`).join('')}</div>
+            <div class="seg" data-a="diff">${DIFFICULTY_ORDER.map((k) => `<button data-v="${k}" title="${DIFFICULTY_BLURBS[k]}">${DIFFICULTY_NAMES[k]}</button>`).join('')}</div>
+            <p class="hint" data-a="diff-hint"></p>
             <button class="primary" data-a="quick">Play quick match</button>
           </div>
           <button data-a="custom"><b>Custom skirmish</b><span>choose map, opponents and teams</span></button>
@@ -166,7 +172,11 @@ export function skirmishMenu(h: { quick: (difficulty: number) => void; custom: (
       </div>
     </div>`);
   const segs = [...m.querySelectorAll<HTMLButtonElement>('[data-a=diff] button')];
-  const mark = () => segs.forEach((b) => b.classList.toggle('on', Number(b.dataset.v) === difficulty));
+  const hint = m.querySelector<HTMLElement>('[data-a=diff-hint]')!;
+  const mark = () => {
+    segs.forEach((b) => b.classList.toggle('on', Number(b.dataset.v) === difficulty));
+    hint.textContent = DIFFICULTY_BLURBS[difficulty] ?? '';
+  };
   segs.forEach((b) =>
     b.addEventListener('click', () => {
       difficulty = Number(b.dataset.v);
@@ -261,20 +271,20 @@ export function missionDebrief(
   ms: Mission,
   i: number,
   won: boolean,
-  h: { next: () => void; retry: () => void; menu: () => void; easy?: () => void },
+  h: { next: () => void; retry: () => void; menu: () => void; warmUp?: () => void },
 ): HTMLDivElement {
   const last = i === MISSIONS.length - 1;
-  // The graduation 1v1 (#147): no skipping it, but a warm-up against Easy when it's lost.
+  // The graduation 1v1 (#147): no skipping it, but a warm-up against a Beginner bot (#117) when it's lost.
   const real = !!ms.real;
   const body = won
     ? `<ul class="steps">${ms.learned.map((l) => `<li>${l}</li>`).join('')}</ul>${real ? '<p><b>Tutorial complete!</b> You’re ready for anything: try a free-for-all next.</p>' : ''}`
     : real
-      ? '<p>The Normal bot won this time. Try again on a new map, or warm up against an Easy bot first.</p>'
+      ? '<p>The Normal bot won this time. Try again on a new map, or warm up against a Beginner bot first.</p>'
       : '<p>Your nests and dots are gone. Try again: grow first, and bring more dots than the enemy.</p>';
   // The primary way on: the next mission, the menu after graduating, a warm-up (only if the
   // caller offers one) after losing the real match, else skipping this one.
-  const warmUp = real && !won ? h.easy : undefined;
-  const go = won ? (real ? { label: 'Main menu', on: h.menu } : { label: 'Next mission', on: h.next }) : warmUp ? { label: 'Warm up vs Easy', on: warmUp } : real ? null : { label: 'Skip mission', on: h.next };
+  const warmUp = real && !won ? h.warmUp : undefined;
+  const go = won ? (real ? { label: 'Main menu', on: h.menu } : { label: 'Next mission', on: h.next }) : warmUp ? { label: 'Warm up vs Beginner', on: warmUp } : real ? null : { label: 'Skip mission', on: h.next };
   const m = el(`
     <div class="screen modal dim">
       <div class="card brief ${won ? 'win' : 'lose'}">
@@ -762,7 +772,7 @@ export function skirmishSetup(onStart: (setup: MatchSetup, scenario?: string) =>
         (b, i) => `
         <div class="bot" data-i="${i}">
           <button class="sw small on" data-a="color" style="--c:${FACTION_HEX[b.faction]}" title="Change color"></button>
-          <select data-a="diff">${DIFFICULTY_NAMES.map((d, k) => `<option value="${k}"${k === b.difficulty ? ' selected' : ''}>${d}</option>`).join('')}</select>
+          <select data-a="diff" title="${DIFFICULTY_BLURBS[b.difficulty] ?? ''}">${difficultyOptions(b.difficulty)}</select>
           <select data-a="pers">${(['random', ...PERSONALITIES] as const).map((p) => `<option value="${p}"${p === b.personality ? ' selected' : ''}>${PERSONA_LABEL[p]}</option>`).join('')}</select>
           <select data-a="team" ${prefs.teams ? '' : 'hidden'}>${[0, 1, 2, 3, 4, 5].map((t) => `<option value="${t}"${t === b.team ? ' selected' : ''}>Team ${'ABCDEF'[t]}${t === 0 ? ' (ally)' : ''}</option>`).join('')}</select>
           ${prefs.mode === 'stronghold' ? `<button class="small icon crown${i === prefs.holder ? ' on' : ''}" data-a="holder" title="${i === prefs.holder ? 'Holds the stronghold' : 'Hold the stronghold'}">♛</button>` : ''}

@@ -84,6 +84,7 @@ describe('wire codec (#157)', () => {
             { k: 'resume', seat: 0 },
             { k: 'seat', seat: 4, state: 'away' },
             { k: 'seat', seat: 4, state: 'bot', bot: { difficulty: 0, personality: 'opportunist' } },
+            { k: 'seat', seat: 4, state: 'bot', bot: { difficulty: 4, personality: 'expander' } }, // Beginner (#117)
             { k: 'seat', seat: 4, state: 'human' },
           ],
         },

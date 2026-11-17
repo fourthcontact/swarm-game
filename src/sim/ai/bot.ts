@@ -8,10 +8,29 @@ import { inArmy, UNIT_FEEDING, WILD_COLOSSUS, type Nest, type World } from '../w
 
 export type Personality = 'rusher' | 'turtler' | 'expander' | 'opportunist';
 export const PERSONALITIES: readonly Personality[] = ['rusher', 'turtler', 'expander', 'opportunist'];
-export const DIFFICULTY_NAMES = ['Easy', 'Normal', 'Hard', 'Brutal'] as const;
+/**
+ * Names by difficulty index. Beginner (#117) came last, so it's index 4: the
+ * indices stored in settings, recordings, campaign nodes and the wire keep
+ * their meaning. Pickers list them easiest first, in `DIFFICULTY_ORDER`.
+ */
+export const DIFFICULTY_NAMES = ['Easy', 'Normal', 'Hard', 'Brutal', 'Beginner'] as const;
+/** The Beginner bot's index (#117). */
+export const BEGINNER = 4;
+/** Difficulty indices easiest first, for pickers. */
+export const DIFFICULTY_ORDER: readonly number[] = [BEGINNER, 0, 1, 2, 3];
+/** One line on who each difficulty is for, by index. */
+export const DIFFICULTY_BLURBS: readonly string[] = [
+  'For players who know the basics.',
+  'A fair fight once you\'re comfortable.',
+  'Fast, grouped attacks and well-timed powers.',
+  'Hard, with 1.5× production. Expect to lose.',
+  'For your first matches: slow, gentle attacks you can recover from.',
+];
+/** Is `d` a known difficulty index? */
+export const validDifficulty = (d: unknown): d is number => Number.isInteger(d) && (d as number) >= 0 && (d as number) < DIFFICULTY_NAMES.length;
 
 export interface BotConfig {
-  difficulty: number; // 0..3
+  difficulty: number; // an index into DIFFICULTY (BEGINNER is 4)
   personality: Personality;
   /** tutorial opponent: defends and expands on its own half, never attacks players */
   passive?: boolean;
@@ -44,14 +63,40 @@ interface DifficultyKnobs {
   dodge: number;
   /** odds a decision plays the map's chokepoints: stage outside a mouth before pushing in, meet attackers at it (#25) */
   choke: number;
+  /** energy kept back on top of a Surge's cost before surging */
+  surgeSave: number;
+  /** attack group size, as a multiple of what the target needs */
+  push: number;
+  /** a gentle bot (#117): players' nests are worth `players` as much, never before `grace` ticks, only in turns, and personalities are toned down */
+  gentle?: Gentle;
+}
+
+/** How a gentle bot (Beginner, #117) treats players (human seats). */
+interface Gentle {
+  /** ticks before it first attacks a player's nest */
+  grace: number;
+  /** after the grace: ticks in each turn of attacking players. Gentle bots take turns, so only one at a time goes after players */
+  turn: number;
+  /** ticks of rest after each turn */
+  rest: number;
+  /** value of a player's nest, relative to a bot's */
+  players: number;
 }
 
 export const DIFFICULTY: readonly DifficultyKnobs[] = [
-  { think: 80, margin: 1.9, powers: false, upgradeSkill: 0.35, noise: 0.6, prod: 1, openReserve: 1, surgeAt: 10, dumpAt: 101, dodge: 0, choke: 0 },
-  { think: 45, margin: 1.45, powers: true, upgradeSkill: 0.7, noise: 0.3, prod: 1, openReserve: 0.5, surgeAt: 8, dumpAt: 95, dodge: 0.5, choke: 0.35 },
-  { think: 24, margin: 1.25, powers: true, upgradeSkill: 1, noise: 0.12, prod: 1, openReserve: 0, surgeAt: 6, dumpAt: 85, dodge: 0.85, choke: 1 },
-  { think: 14, margin: 1.15, powers: true, upgradeSkill: 1, noise: 0.06, prod: 1.5, openReserve: 0, surgeAt: 6, dumpAt: 85, dodge: 1, choke: 1 },
+  { think: 80, margin: 1.9, powers: false, upgradeSkill: 0.35, noise: 0.6, prod: 1, openReserve: 1, surgeAt: 10, dumpAt: 101, dodge: 0, choke: 0, surgeSave: 0, push: 1.6 },
+  { think: 45, margin: 1.45, powers: true, upgradeSkill: 0.7, noise: 0.3, prod: 1, openReserve: 0.5, surgeAt: 8, dumpAt: 95, dodge: 0.5, choke: 0.35, surgeSave: 0, push: 1.6 },
+  { think: 24, margin: 1.25, powers: true, upgradeSkill: 1, noise: 0.12, prod: 1, openReserve: 0, surgeAt: 6, dumpAt: 85, dodge: 0.85, choke: 1, surgeSave: 25, push: 1.6 },
+  { think: 14, margin: 1.15, powers: true, upgradeSkill: 1, noise: 0.06, prod: 1.5, openReserve: 0, surgeAt: 6, dumpAt: 85, dodge: 1, choke: 1, surgeSave: 25, push: 1.6 },
+  // Beginner (#117): slow, wary, no powers, a little less production, and gentle with players.
+  {
+    think: 110, margin: 2.6, powers: false, upgradeSkill: 0.1, noise: 0.7, prod: 0.85, openReserve: 1, surgeAt: 10, dumpAt: 101, dodge: 0, choke: 0, surgeSave: 0, push: 1.15,
+    gentle: { grace: 90 * 30, turn: 20 * 30, rest: 40 * 30, players: 0.6 },
+  },
 ];
+
+/** A gentle bot's personality: aggression toned down, the rest kept for variety. */
+const tame = (p: PersonalityKnobs): PersonalityKnobs => ({ ...p, enemy: Math.min(p.enemy, 1), reach: Math.min(p.reach, 1), reserve: Math.max(p.reserve, 0.25), eagerSurge: false });
 
 interface PersonalityKnobs {
   neutral: number;
@@ -227,7 +272,7 @@ export class Bot {
     this.rng = new Rng((seed ^ Math.imul(faction + 1, 0x9e3779b1)) >>> 0);
     const d = DIFFICULTY[cfg.difficulty] ?? DIFFICULTY[1];
     this.d = cfg.powers === false ? { ...d, powers: false } : d;
-    this.p = PERSONALITY[cfg.personality];
+    this.p = this.d.gentle ? tame(PERSONALITY[cfg.personality]) : PERSONALITY[cfg.personality];
     this.choke = cfg.choke ?? this.d.choke;
   }
 
@@ -262,6 +307,24 @@ export class Bot {
     else this.seen.clear();
     if ((w.tick + this.faction * 7) % this.d.think !== 0) return;
     this.think(w);
+  }
+
+  /**
+   * May this bot attack players' nests now? Always, unless it's gentle (#117):
+   * then not before the grace period, and after it only in turns. Gentle bots
+   * share one rotation, so however many there are, one at a time goes after
+   * players, for `turn` ticks in every `turn + rest`. Derived from the tick, so
+   * snapshots carry nothing new.
+   */
+  private playersOpen(w: World): boolean {
+    const g = this.d.gentle;
+    if (!g) return true;
+    const t = w.tick - g.grace;
+    if (t < 0) return false;
+    const cycle = g.turn + g.rest;
+    if (t % cycle >= g.turn) return false;
+    const gentle = w.bots.filter((b) => b.d.gentle && !w.factions[b.faction].eliminated);
+    return Math.floor(t / cycle) % gentle.length === gentle.indexOf(this);
   }
 
   /** Barrages already reacted to (by landing tick and spot). */
@@ -525,8 +588,13 @@ export class Bot {
     const available = idle.length - used.size - reserve;
     // A passive bot keeps to the nests nearer its home than any rival's.
     const rivalHomes = this.cfg.passive ? w.nests.filter((n) => n.capital && n.owner >= 0 && n.owner !== NEUTRAL && w.teamOf[n.owner] !== myTeam) : [];
+    // A gentle bot leaves players alone outside its turn (#117).
+    const gentle = this.d.gentle;
+    const playersOpen = this.playersOpen(w);
     for (const n of w.nests) {
       if (n.owner >= 0 && w.teamOf[n.owner] === myTeam) continue;
+      const player = !!gentle && n.owner >= 0 && n.owner !== NEUTRAL && w.factions[n.owner].human;
+      if (player && !playersOpen) continue;
       if (this.cfg.passive) {
         if (n.owner >= 0 && n.owner !== NEUTRAL) continue;
         const mineD = (n.x - hx) ** 2 + (n.y - hy) ** 2;
@@ -550,7 +618,9 @@ export class Bot {
         if (n.owner === weakest && rivals > 3) value *= this.p.weakest;
         // Third-party: a nest under attack by someone else is softened up.
         if (n.contested && hostileNotOwner(n)) value *= this.p.vulture;
-        if (n.owner === leader) value *= leaderBonus;
+        // Gentle with players: they're worth less, and a beginner who's behind isn't piled on or finished off.
+        if (player) value *= gentle!.players;
+        else if (n.owner === leader) value *= leaderBonus;
         value /= 1 + (CROWD.k * pressure[n.owner]) / Math.max(CROWD.minArmy, myUnits);
         // Early on, fight your neighbors: nobody crosses the map to jump one player.
         if (rivals > 2 && w.tick < RUNAWAY.afterTicks && homeDist[n.owner] > 0) {
@@ -562,7 +632,7 @@ export class Bot {
           value *= DOM_BOT.value;
           margin = Math.min(margin, DOM_BOT.margin);
         }
-        if (straggler(n.owner)) {
+        if (!player && straggler(n.owner)) {
           value *= 2.4;
           margin = Math.min(margin, 1.1);
         }
@@ -593,7 +663,7 @@ export class Bot {
     }
     if (best && available >= bestNeed) {
       this.focus = best.id;
-      const group = take(best.x, best.y, Math.min(available, bestNeed * 1.6 + 8), 1e9);
+      const group = take(best.x, best.y, Math.min(available, bestNeed * this.d.push + 8), 1e9);
       // Into a held chamber: gather outside its mouth first instead of trickling in single file.
       const rival = best.owner >= 0 && best.owner !== NEUTRAL;
       const stage = mouths && CHOKE_BOT.stage && group.length >= 6 && (rival || hostile[best.id] >= 4) ? this.stageFor(w, group, best, mouths[best.id]) : null;
@@ -921,7 +991,7 @@ export class Bot {
     } else if (this.p.eagerSurge && bestH >= 6 && own.length >= 6) {
       // Rushers spend energy on Surge the moment a fight starts.
       this.issue(w, { t: 'surge', p: me, units: uids });
-    } else if (bestH >= this.d.surgeAt && own.length >= this.d.surgeAt && this.spendable(w, POWER.surgeCost + (this.cfg.difficulty >= 2 ? 25 : 0))) {
+    } else if (bestH >= this.d.surgeAt && own.length >= this.d.surgeAt && this.spendable(w, POWER.surgeCost + this.d.surgeSave)) {
       this.issue(w, { t: 'surge', p: me, units: uids });
     }
   }

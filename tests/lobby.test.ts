@@ -122,6 +122,8 @@ describe('lobby (#162)', () => {
     expect(parseLobby(JSON.stringify({ ...s, rows: s.rows.slice(1) }))).toBeNull();
     expect(parseLobby(JSON.stringify({ ...s, map: { ...s.map, size: 'huge' } }))).toBeNull();
     expect(parseLobby(JSON.stringify({ ...s, rows: [{ k: 'bot', team: 0, difficulty: 9, personality: 'x' }, ...s.rows.slice(1)] }))).toBeNull();
+    // a Beginner bot (#117, index 4) is a valid row
+    expect(parseLobby(JSON.stringify({ ...s, rows: [s.rows[0], { k: 'bot', team: 1, difficulty: 4, personality: 'random' }, ...s.rows.slice(2)] }))).not.toBeNull();
   });
 
   it('builds the match from the rows: colours are seats, teams only when on', () => {

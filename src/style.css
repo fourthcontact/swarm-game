@@ -1084,7 +1084,8 @@ body.mobile .coach .coach-row button { padding: 3px 10px; font-size: 12px; }
 .card.campaign .quick > span { font-size: 13px; color: var(--muted); margin-top: -4px; }
 .card.campaign .quick label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 4px; }
 .card.campaign .quick .seg { display: flex; }
-.card.campaign .quick .seg button { flex: 1; }
+.card.campaign .quick .seg button { flex: 1 1 auto; min-width: 0; padding-left: 4px; padding-right: 4px; }
+@media (max-width: 420px) { .card.campaign .quick .seg button { font-size: 13px; } }
 .card.campaign .quick button.primary { margin-top: 6px; align-items: center; }
 
 /* ---- procedural campaign (#62) ---------------------------------------- */
@@ -1493,3 +1494,4 @@ body.land .end .row { grid-column: 1 / -1; }
 .saved-matches[hidden] { display: none; }
 .saved-match { margin-top: 6px; flex-wrap: nowrap; }
 .saved-match .grow { flex: 1; min-width: 0; font-size: 13px; opacity: 0.85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card.campaign .quick .hint { margin: 2px 0 0; font-size: 13px; color: var(--muted); min-height: 2.6em; }

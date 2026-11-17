@@ -1,9 +1,10 @@
 import { FACTION_RGB, WHITE, mixRgb, type RGB } from '../content/factions';
-import { bastionRange, keyScoring, keyTarget, DAMAGE_VS, DOMINATION, EVENTS, KEYS, Kind, NEUTRAL, NestType, POWER, TERRAIN, UNIT_FEEDING, UNIT_RETREAT, UNIT_STATS, UPGRADE_COST, VARIANTS } from '../sim/index';
+import { bastionRange, keyScoring, DAMAGE_VS, EVENTS, KEYS, Kind, NEUTRAL, NestType, POWER, TERRAIN, UNIT_FEEDING, UNIT_RETREAT, UNIT_STATS, UPGRADE_COST, VARIANTS } from '../sim/index';
 import { HEART, heartSlot, standingNests } from '../sim/heart';
 import { SIEGE } from '../sim/siege';
 import { WILD_HEART, type Drop, type World } from '../sim/world';
 import type { Renderer } from './renderer';
+import { domThrob } from './throb';
 import type { TraitId } from '../campaign/warlords';
 import { BLOOM_GLOW, BLOOM_RGB, bloomBreath, drawBloomNests, drawHeartBody, type BloomView } from './bloom';
 
@@ -111,9 +112,9 @@ function drawNests(r: Renderer, w: World, o: SceneOpts): void {
       r.unit(n.x + Math.cos(a) * rr, n.y + Math.sin(a) * rr, 4, c[0], c[1], c[2], 255);
     }
 
-    // Nests of a dominating team throb, faster as the clock runs down.
-    if (n.owner >= 0 && n.owner !== NEUTRAL && w.domTicks[w.teamOf[n.owner]] > 0) {
-      const k = w.domTicks[w.teamOf[n.owner]] / (w.keys.length ? keyTarget(w) : DOMINATION.ticks);
+    // Nests of a dominating team throb, faster as the clock runs down; in Domination only its scoring key nests (#260).
+    const k = domThrob(w, n.id);
+    if (k >= 0) {
       const beat = 0.5 + 0.5 * Math.sin(o.time * (4 + 10 * k));
       r.shape(true, n.x, n.y, R * (1.6 + 0.25 * beat), 0, 1, 0, 0.05, c, Math.round(90 + 140 * beat));
       r.shape(false, n.x, n.y, R * 1.9, 7, 1, 0, 0, c, Math.round(18 + 30 * beat));

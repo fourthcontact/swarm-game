@@ -4,7 +4,7 @@
  * The map does the looking (`TourControl`); this only drives it.
  */
 
-import { GLOSSARY, type TourCamp, type TourFocus, type TourMark, type TourStep } from '../campaign/tour';
+import { GLOSSARY, stepText, type TourCamp, type TourFocus, type TourMark, type TourStep } from '../campaign/tour';
 import type { RunState } from '../campaign/run';
 import { el, esc } from './dom';
 
@@ -53,7 +53,7 @@ export function mountTour(host: HTMLElement, steps: TourStep[], run: RunState, c
   const show = () => {
     const s = steps[i];
     title.textContent = `${s.title} · ${i + 1} of ${steps.length}`;
-    text.textContent = s.text;
+    text.textContent = stepText(s, run);
     pips.innerHTML = steps.map((_, k) => `<i class="${k < i ? 'done' : k === i ? 'now' : ''}"></i>`).join('');
     back.disabled = i === 0;
     next.textContent = i === steps.length - 1 ? 'Done' : 'Next';

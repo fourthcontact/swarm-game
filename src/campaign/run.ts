@@ -46,6 +46,8 @@ import {
 export const MAP_W = 1000;
 export const MAP_H = 620;
 export const RUN_VERSION = 2;
+/** The finale rules a run's finale node was built with (#252). Older saves have none: loadRun brings them up to date once. */
+export const FINALE_RULES = 1;
 /** share of battle nodes that offer a brood to rescue */
 const RESCUE_ODDS = 0.25;
 
@@ -210,6 +212,8 @@ export interface RunState {
   swallowed: number[];
   /** the heart's wounds from lost finales: the share of its HP it starts the next one without (heartCarry) */
   heartWound?: number;
+  /** FINALE_RULES when the finale node was built or last brought up to date (older saves: none) */
+  finaleRules?: number;
   bloom: Bloom;
   turn: number;
   /** chosen at the start (older saves: Standard, see difficultyOf) */
@@ -488,6 +492,7 @@ export function newRun(seedText: string, color: number, pack: PackId = 'swarm', 
 
   return {
     v: RUN_VERSION,
+    finaleRules: FINALE_RULES,
     id: `${now.toString(36)}-${(seed % 46656).toString(36)}`,
     seedText: seedText.trim() || 'swarm',
     seed,

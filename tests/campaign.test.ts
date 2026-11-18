@@ -637,6 +637,7 @@ describe('saves', () => {
     const { loadRun, saveRun } = await import('../src/campaign/store');
     for (const d of DIFFICULTIES) {
       const old = newRun(`old-${d}`, 0, 'swarm', 0, d);
+      delete old.finaleRules;
       const fin = old.nodes.find((n) => n.kind === 'finale')!;
       // Before #252 the finale was a level lower, and Hard's had three rivals.
       Object.assign(fin, { rivals: 3, difficulty: 2 });
@@ -644,6 +645,11 @@ describe('saves', () => {
       const back = loadRun(old.id)!.nodes.find((n) => n.kind === 'finale')!;
       expect({ rivals: back.rivals, difficulty: back.difficulty }).toEqual(RUN_DIFFICULTY[d].finale);
     }
+    // Only once: a run already on today's finale rules keeps its finale node as saved.
+    const now = newRun('now', 0, 'swarm', 0);
+    Object.assign(now.nodes.find((n) => n.kind === 'finale')!, { rivals: 1 });
+    saveRun(now);
+    expect(loadRun(now.id)!.nodes.find((n) => n.kind === 'finale')!.rivals).toBe(1);
     delete (globalThis as { localStorage?: unknown }).localStorage;
   });
 });

@@ -2,6 +2,7 @@ import { ESCALATION, EVENTS, Kind, LEVEL, MAX_LEVEL, NEUTRAL, NestType, bastionT
 import { applyCommand, barrageLaunch, feedNeed, hasPower, type Command } from '../commands';
 import { Rng } from '../rng';
 import { nestMouths, type Mouth } from './chokes';
+import { shieldedHeart } from '../heart';
 import { supplyCap } from '../nests';
 import { queryRadius } from '../spatial';
 import { inArmy, UNIT_FEEDING, WILD_COLOSSUS, type Nest, type World } from '../world';
@@ -1028,9 +1029,11 @@ export class Bot {
       oy += w.y[s];
     }
     queryRadius(w, w.x[bestC], w.y[bestC], 90, scratch);
+    // A shielded heart takes no damage (#252): it's no target for a Barrage.
+    const shielded = shieldedHeart(w);
     let ex = 0, ey = 0, ne = 0;
     for (const s of scratch) {
-      if (!w.hostile(w.owner[s], me)) continue;
+      if (!w.hostile(w.owner[s], me) || s === shielded) continue;
       ex += w.x[s];
       ey += w.y[s];
       ne++;

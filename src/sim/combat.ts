@@ -236,8 +236,9 @@ export function resolveDamage(w: World): void {
     let ward = 1;
     if (w.wild[i] === WILD_HEART) {
       ward = heartWard(w);
-      // Any hit, from any range, keeps it from regrowing.
-      w.heart!.threat = w.tick;
+      // Any hit that can hurt it, from any range, keeps it from regrowing.
+      // Stray splash on a shielded heart doesn't (#252).
+      if (ward > 0) w.heart!.threat = w.tick;
     }
     w.hp[i] -= w.dmg[i] * taken(w, i) * ward;
     w.dmg[i] = 0;

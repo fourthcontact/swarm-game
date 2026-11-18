@@ -78,9 +78,10 @@ export function initHeart(w: World, strength: number, rule: HeartRule, wound = 0
     .filter((n) => n.owner === NEUTRAL)
     .map((n) => ({ n, d: (n.x - x) ** 2 + (n.y - y) ** 2 }))
     .sort((a, b) => a.d - b.d || a.n.id - b.n.id);
+  const walk = w.terrain.reachableFrom(x, y);
   for (const { n } of near) {
     if (nests.length >= count) break;
-    if (w.terrain.connected([[x, y], [n.x, n.y]])) nests.push(n.id);
+    if (walk(n.x, n.y)) nests.push(n.id);
   }
   const t = w.tick;
   w.heart = {

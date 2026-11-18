@@ -17,8 +17,6 @@ export const HEART = {
   hpPerStrength: 0.06,
   /** drawn size (the sim uses the Colossus's reach) */
   size: 30,
-  /** damage taken drops by this much per standing Bloom nest */
-  ward: 0.15,
   /** Bloom nests: 2, plus one per this many swallowed nodes, at most 4 */
   nestsPer: 4,
   nestsMax: 4,
@@ -132,9 +130,13 @@ export function standingNests(w: World): number {
   return n;
 }
 
-/** The heart's damage multiplier: each standing Bloom nest wards it. */
+/**
+ * The heart's damage multiplier. The ward gate (#252): while any of its Bloom
+ * nests stands, it takes no damage, so the finale is a fight across the map
+ * for the wards, not a straight dive at the heart.
+ */
 export function heartWard(w: World): number {
-  return Math.max(0.2, 1 - HEART.ward * standingNests(w));
+  return standingNests(w) > 0 ? 0 : 1;
 }
 
 /** Slot of the living heart, or -1. */

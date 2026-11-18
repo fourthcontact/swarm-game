@@ -883,7 +883,7 @@ export class Hud {
       const h = w.heart!;
       const ward = standingNests(w);
       (this.heartBar.children[1].children[0] as HTMLElement).style.width = `${(100 * w.hp[hs]) / h.maxHp}%`;
-      const text = ward > 0 ? `Warded by ${ward} Bloom nest${ward > 1 ? 's' : ''}: take them to break the ward` : 'Unwarded: strike now';
+      const text = ward > 0 ? `Shielded by ${ward} Bloom nest${ward > 1 ? 's' : ''}: it takes no damage until you take ${ward > 1 ? 'them all' : 'it'}` : 'Unshielded: strike now';
       const el = this.heartBar.children[2] as HTMLElement;
       if (el.textContent !== text) el.textContent = text;
       this.heartBar.classList.toggle('open', ward === 0);

@@ -54,17 +54,28 @@ describe("the Bloom's heart", () => {
     expect([w.x[s], w.y[s]]).toEqual([h.x, h.y]);
   });
 
-  it('is warded by every Bloom nest the Bloom still holds', () => {
+  it('takes no damage while any Bloom nest the Bloom holds still stands (#252)', () => {
     const w = arena();
     const s = heartSlot(w);
     expect(standingNests(w)).toBe(2);
-    expect(heartWard(w)).toBeCloseTo(1 - 2 * HEART.ward);
+    expect(heartWard(w)).toBe(0);
     const hp = w.hp[s];
     w.dmg[s] = 100;
     resolveDamage(w);
-    expect(hp - w.hp[s]).toBeCloseTo(100 * (1 - 2 * HEART.ward));
+    expect(w.hp[s]).toBe(hp);
+    // One down, one standing: still shielded.
     w.nests[0].owner = 0;
-    expect(heartWard(w)).toBeCloseTo(1 - HEART.ward);
+    expect(heartWard(w)).toBe(0);
+    w.dmg[s] = 100;
+    resolveDamage(w);
+    expect(w.hp[s]).toBe(hp);
+    // Every ward down: full damage.
+    w.nests[1].owner = 0;
+    expect(heartWard(w)).toBe(1);
+    w.dmg[s] = 100;
+    resolveDamage(w);
+    expect(hp - w.hp[s]).toBeCloseTo(100);
+    w.nests[1].owner = NEUTRAL;
     // A nest the players took stays lost to the Bloom, even if it goes wild again.
     step(w, []);
     w.nests[0].owner = NEUTRAL;
@@ -113,7 +124,9 @@ describe("the Bloom's heart", () => {
     expect(w.hp[s]).toBeLessThanOrEqual(h.maxHp * (2 / 3) + 1e-6);
   });
 
+  // The wards fall first: while one stands, the heart can't be hurt (#252).
   const kill = (w: World, by: number) => {
+    for (const id of w.heart!.nests) w.nests[id].owner = by;
     const s = heartSlot(w);
     w.hp[s] = 1;
     w.dmg[s] = 1e6;

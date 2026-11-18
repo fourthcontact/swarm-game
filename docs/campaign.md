@@ -211,7 +211,7 @@ After every won node, **pick 1 of 3** offers.
 
 ## Finale: the Bloom's heart
 - **Map:** a large map overrun by the Bloom, with its swarms at full pressure. The heart, a rooted boss (`src/sim/heart.ts`), sits near the centre.
-- **Bloom nests:** the 2–4 neutral nests nearest the heart. While the Bloom holds them, they release swarms and **ward** the heart: each one cuts the damage it takes by 15%. Take them first.
+- **Bloom nests:** the 2–4 neutral nests nearest the heart. While the Bloom holds them, they release swarms and **shield** the heart: while any one of them stands, it takes no damage at all (#252). Take them all, then strike. A ward once taken stays down, even if it goes wild again.
 - **The heart fights back:**
   - a **pulse:** a telegraphed shockwave (pull back during the wind-up);
   - **spore lobs** at the thickest crowd;
@@ -221,6 +221,7 @@ After every won node, **pick 1 of 3** offers.
 - **Strength:** the nodes the Bloom ate add health to the heart (6% each), more Bloom nests, and bigger swarms.
 - **Winning:** on Gentle, Standard and Hard, your killing blow wins. If a rival lands it, the battle goes on as a normal one. On Brutal, the heart's death only opens the fight: the rivals must be beaten too. Losing all your units and nests still loses.
 - The `?heart=N` dev link jumps straight into a finale, with the Bloom fed by N nodes.
+- **Rivals:** one bot level above the run's hardest regular node, at most Brutal (#252). Every difficulty's finale now fields Brutal bots, so it's the hardest battle of the run.
 - **Warlords:** any still alive whose domain borders the heart join as rivals. They suffer the Bloom too.
 
 ## Sound and music

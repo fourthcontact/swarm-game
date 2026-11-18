@@ -50,9 +50,11 @@ import { KEYS, Kind, NestType, TICK_HZ } from '../sim/constants';
 import type { PastRun } from '../campaign/store';
 import { tourFor, type TourCamp, type TourFocus, type TourMark } from '../campaign/tour';
 import { mountTour, runHowTo, type Tour } from './runtour';
+import { onRival, rivalStrip, showBigMap, showRival } from './battlepeek';
 import { el, esc } from './dom';
 import { FACTION_HEX } from '../content/factions';
-import { DIFFICULTY_NAMES, type Personality } from '../sim/ai/bot';
+import { DIFFICULTY_NAMES } from '../sim/ai/bot';
+import { isMobile } from './mobile';
 
 
 const SIZE_LABEL = { small: 'Small', medium: 'Medium', large: 'Large' } as const;
@@ -71,23 +73,6 @@ const lossText = (keep: number) => (keep === 0.5 ? 'halved' : `cut to ${Math.rou
 
 /** A shape per unit kind, matching the in-battle silhouettes as closely as text allows. */
 const KIND_GLYPH: Record<number, string> = { [Kind.Dot]: '●', [Kind.Tank]: '■', [Kind.Lancer]: '▲', [Kind.Swift]: '◆' };
-
-const TEMPER_LABEL: Record<Personality, string> = { rusher: 'Rusher', turtler: 'Turtler', expander: 'Expander', opportunist: 'Opportunist' };
-const TEMPER_HINT: Record<Personality, string> = {
-  rusher: 'attacks early and often',
-  turtler: 'digs in and defends',
-  expander: 'grabs nests fast',
-  opportunist: 'preys on the weakest',
-};
-
-/** Rival portraits (#72) as slots for `mountCreatures`; `names` adds each one's name and temper. */
-function rivalStrip(list: Rival[], names: boolean, cls = ''): string {
-  const one = (r: Rival, i: number) =>
-    `<span class="rival" style="--c:${FACTION_HEX[r.faction]}" title="${r.creature.name}: ${TEMPER_LABEL[r.personality]}, ${TEMPER_HINT[r.personality]}">
-      <span class="portrait" data-creature="${i}"></span>${names ? `<span class="who"><b>${r.warlord ? `♛ ${esc(r.warlord.name)}` : r.creature.name}</b><small>${r.warlord ? TRAITS[r.warlord.trait].name : TEMPER_LABEL[r.personality]}</small></span>` : ''}
-    </span>`;
-  return `<div class="rival-strip ${cls}">${list.map(one).join('')}</div>`;
-}
 
 function broodChip(b: Brood): string {
   const tags = `${veteran(b) ? '★' : ''}${b.strains.length ? '✦'.repeat(b.strains.length) : ''}${b.wounded ? ' ✚' : ''}`;
@@ -1017,12 +1002,12 @@ export function runMap(
       rows.push(
         n.kind === 'hold'
           ? `<dt>Enemies</dt><dd>The Bloom: every nest it holds in the field makes its waves bigger</dd>`
-          : `<dt>Enemies</dt><dd>${n.rivals} rival${n.rivals > 1 ? 's' : ''} · ${DIFFICULTY_NAMES[n.difficulty]}${rivalStrip(foes, true, 'small')}</dd>`,
+          : `<dt>Enemies</dt><dd>${n.rivals} rival${n.rivals > 1 ? 's' : ''} · ${DIFFICULTY_NAMES[n.difficulty]}${rivalStrip(foes, true, 'small', true)}</dd>`,
       );
       // Strongholds and Hold the line are fortresses, each in its own style (#67).
       const fort = fortress || n.kind === 'hold' ? cardMap(run, n).fortress : undefined;
       const ground = fort ? `Fortress (${FORTRESS_LABEL[fort.style]})` : CAVE_LABEL[n.caves];
-      rows.push(`<dt>Map</dt><dd>${SIZE_LABEL[n.size]} · ${ground} · ${TERRAIN_LABEL[n.terrain]}<div class="battle-map-slot"></div></dd>`);
+      rows.push(`<dt>Map</dt><dd>${SIZE_LABEL[n.size]} · ${ground} · ${TERRAIN_LABEL[n.terrain]}<button class="battle-map-slot" data-a="bigmap" aria-label="Show the battle map large"><span class="enlarge">⤢ ${isMobile() ? 'Tap' : 'Click'} to enlarge</span></button></dd>`);
       if (n.kind === 'hold') {
         const sg = siegeFor(run, n.depth);
         rows.push(`<dt>Siege</dt><dd>Hold for ${Math.floor(sg.seconds / 60)}:${String(sg.seconds % 60).padStart(2, '0')} · a wave every ${sg.every}s, the first ${sg.size} strong and growing</dd>`);
@@ -1051,6 +1036,7 @@ export function runMap(
     }
     const status = n.id === run.at ? 'Your swarm is here, at its camp.' : dead ? 'Lost to the Bloom.' : taken ? 'Taken: march through without a battle.' : canGo ? '' : reachable(run)?.has(n.id) === false ? 'Out of reach: your swarm has moved past it.' : 'Not next to your swarm.';
     const verb = !canGo ? null : needsBattle(run, n.id) ? 'Fight' : 'March';
+    panel.classList.remove('wide');
     panel.innerHTML = `
       <button class="icon close" data-a="close" aria-label="Close">✕</button>
       <h3 class="with-sigil"><span class="sigil-slot"></span>${fortress ? 'Stronghold' : KIND_LABEL[n.kind]}</h3>
@@ -1062,7 +1048,18 @@ export function runMap(
     mountCreatures(panel, foes.map((r) => r.creature), 40);
     panel.querySelector('.sigil-slot')?.append(sigilCanvas(run, n, 36, FACTION_HEX[run.color]));
     // The battle's actual map: you in your colour, the rivals in theirs.
-    panel.querySelector('.battle-map-slot')?.append(battleMapCanvas(run, n, 210, FACTION_HEX[run.color]));
+    panel.querySelector('.battle-map-slot')?.prepend(battleMapCanvas(run, n, 210, FACTION_HEX[run.color]));
+    // A closer look (#249): the map large, and a card for each rival.
+    // Back from a rival's card goes where it was opened from.
+    const bigMap = () => showBigMap(panel, run, n, foes, FACTION_HEX[run.color], { back: preview, close, rival: (i) => showRival(panel, run, n, foes, i, { back: bigMap, close }) });
+    panel.querySelector('[data-a=bigmap]')?.addEventListener('click', () => {
+      sfx.mapHover();
+      bigMap();
+    });
+    onRival(panel, (i) => {
+      sfx.mapHover();
+      showRival(panel, run, n, foes, i, { back: preview, close });
+    });
     panel.querySelector('[data-a=close]')!.addEventListener('click', close);
     panel.querySelector('[data-a=camp]')?.addEventListener('click', () => camp());
     panel.querySelector('[data-a=go]')?.addEventListener('click', () => {
@@ -1089,10 +1086,11 @@ export function runMap(
         )
         .join('');
       const count = picked.size;
+      panel.classList.remove('wide');
       panel.innerHTML = `
         <button class="icon close" data-a="close" aria-label="Close">✕</button>
         <h3>Field your broods</h3>
-        <div class="facing"><span class="hint">Facing</span>${rivalStrip(foes, true)}</div>
+        <div class="facing"><span class="hint">Facing</span>${rivalStrip(foes, true, '', true)}</div>
         <p class="hint">${max === 1 ? `One only (Lone wolf), at ${LONE_WOLF}× size, as veterans` : `Up to ${max}`}. They are your starting army: win and each keeps its own survivors, a share of the new units of its kind, and 2 more, but one with none of its kind left is wiped out; lose and they're wounded and ${lossText(RUN_DIFFICULTY[difficultyOf(run)].lossKeep)}.</p>
         <div class="brood-list">${rows}</div>
         ${fitOnes.length ? '' : '<p class="hint">Every brood is wounded. A militia of 10 Swarmers fights this one, and no brood is at risk.</p>'}
@@ -1101,6 +1099,7 @@ export function runMap(
           <button class="primary grow1" data-a="fight" ${fitOnes.length && !count ? 'disabled' : ''}>${count ? `Fight with ${count} brood${count > 1 ? 's' : ''}` : 'Fight with the militia'}</button>
         </div>`;
       mountCreatures(panel, foes.map((r) => r.creature), 56);
+      onRival(panel, (i) => showRival(panel, run, n, foes, i, { back: draw, close }));
       panel.querySelector('[data-a=close]')!.addEventListener('click', close);
       panel.querySelector('[data-a=back]')!.addEventListener('click', preview);
       panel.querySelectorAll<HTMLButtonElement>('[data-b]').forEach((btn) =>

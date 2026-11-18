@@ -10,7 +10,7 @@ import { nodeSetup } from '../campaign/battle';
 import { MAP_H, bloomGapWith, type Bloom, type RunNode, type RunState } from '../campaign/run';
 import { FACTION_HEX } from '../content/factions';
 import { generateMap, type MapSpec } from '../sim/mapgen';
-import { mapParamsOf } from '../sim/setup';
+import { createWorld, mapParamsOf } from '../sim/setup';
 import { ROCK_RES, rockGrid } from '../sim/terrain';
 
 export const BLOOM = '#c04a9a';
@@ -159,12 +159,42 @@ function mapSprite(run: RunState, n: RunNode, style: 'constellation' | 'minimap'
 
 const ROCK = [70, 85, 150];
 
+/** What a battle has beyond its map spec (#249): the finale's heart and the Bloom nests that ward it. */
+export interface BattleMarks {
+  heart?: { x: number; y: number };
+  wards?: { x: number; y: number }[];
+}
+
+/** A player's home on a battle map: their capital (or first nest), or null if they start with none. */
+export function homeOf(m: MapSpec, player: number): { x: number; y: number } | null {
+  return m.nests.find((n) => n.player === player && n.capital !== false) ?? m.nests.find((n) => n.player === player) ?? null;
+}
+
+/** A small star (#249): the heart on the battle map. */
+function star(g: CanvasRenderingContext2D, x: number, y: number, r: number): void {
+  g.beginPath();
+  for (let k = 0; k < 12; k++) {
+    const a = (k / 12) * Math.PI * 2 - Math.PI / 2, rr = k % 2 ? r * 0.45 : r;
+    g.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+  }
+  g.closePath();
+}
+
 /**
  * A top-down picture of a battle map at scale `s` from (ox, oy): cave rock,
  * walls, nebula and rift fields (with `detail`), crystals, and the nests in
  * their owners' colours (your start in yours, rivals' in theirs).
  */
-export function drawBattleMap(g: CanvasRenderingContext2D, m: MapSpec, colorOf: (player: number) => string, ox: number, oy: number, s: number, detail: boolean): void {
+export function drawBattleMap(
+  g: CanvasRenderingContext2D,
+  m: MapSpec,
+  colorOf: (player: number) => string,
+  ox: number,
+  oy: number,
+  s: number,
+  detail: boolean,
+  marks: BattleMarks = {},
+): void {
   const X = (x: number) => ox + x * s, Y = (y: number) => oy + y * s;
   const capsule = (c: { x1: number; y1: number; x2: number; y2: number; r: number }, ctx: CanvasRenderingContext2D) => {
     ctx.lineWidth = Math.max(1, c.r * 2 * s);
@@ -194,8 +224,12 @@ export function drawBattleMap(g: CanvasRenderingContext2D, m: MapSpec, colorOf: 
     c.putImageData(img, 0, 0);
     g.globalAlpha = 0.55;
     g.imageSmoothingEnabled = true;
+    // Drawn large (#249), one cell a pixel shows as blocks: soften it.
+    const cell = ROCK_RES * s;
+    if (cell > 4) g.filter = `blur(${(cell * 0.4).toFixed(1)}px)`;
     // Grid point k sits at k * ROCK_RES: centre each pixel on its point.
     g.drawImage(cells, X(-ROCK_RES / 2), Y(-ROCK_RES / 2), grid.cols * ROCK_RES * s, grid.rows * ROCK_RES * s);
+    g.filter = 'none';
     g.globalAlpha = 1;
   }
   if (detail) {
@@ -258,6 +292,53 @@ export function drawBattleMap(g: CanvasRenderingContext2D, m: MapSpec, colorOf: 
     }
   }
   g.globalAlpha = 1;
+  if (!detail) return;
+  // The citadel (#249): a white ring round the fortress's capital, so it reads as more than a nest.
+  if (m.fortress) {
+    g.strokeStyle = '#ffffff';
+    g.lineWidth = 2;
+    g.setLineDash([4, 3]);
+    g.beginPath();
+    g.arc(X(m.fortress.x), Y(m.fortress.y), Math.max(5, unit * 0.06), 0, Math.PI * 2);
+    g.stroke();
+    g.setLineDash([]);
+  }
+  // The finale's heart in the Bloom's colour, and its ward nests ringed.
+  g.strokeStyle = g.fillStyle = BLOOM;
+  g.lineWidth = 2;
+  for (const w of marks.wards ?? []) {
+    g.beginPath();
+    g.arc(X(w.x), Y(w.y), Math.max(4, unit * 0.035), 0, Math.PI * 2);
+    g.stroke();
+  }
+  if (marks.heart) {
+    star(g, X(marks.heart.x), Y(marks.heart.y), Math.max(6, unit * 0.045));
+    g.fill();
+    g.strokeStyle = '#ffffff';
+    g.lineWidth = 1;
+    g.stroke();
+  }
+}
+
+const HEARTS = new Map<string, BattleMarks>();
+
+/**
+ * The finale's heart and ward nests (#249). They're placed when the world is
+ * built (initHeart), so build it once here: deterministic, cached per node
+ * seed and Bloom strength. Empty for any other battle.
+ */
+export function battleMarks(run: RunState, n: RunNode): BattleMarks {
+  if (n.kind !== 'finale') return {};
+  const setup = nodeSetup(run, n.id);
+  const key = `${n.seed}:${setup.heart?.strength ?? 0}`;
+  let mk = HEARTS.get(key);
+  if (!mk) {
+    const w = createWorld(setup);
+    const h = w.heart;
+    mk = h ? { heart: { x: h.x, y: h.y }, wards: h.nests.map((id) => ({ x: w.nests[id].x, y: w.nests[id].y })) } : {};
+    HEARTS.set(key, mk);
+  }
+  return mk;
 }
 
 const CARD_MAPS = new Map<string, MapSpec>();
@@ -290,7 +371,7 @@ export function battleMapCanvas(run: RunState, n: RunNode, px: number, me: strin
   if (g) {
     g.fillStyle = '#0a0d1c';
     g.fillRect(0, 0, cv.width, cv.height);
-    drawBattleMap(g, m, (p) => (p === 0 ? me : p > 0 ? FACTION_HEX[rivals[p - 1]] ?? '#e6eaff' : '#e6eaff'), 0, 0, cv.width / m.width, true);
+    drawBattleMap(g, m, (p) => (p === 0 ? me : p > 0 ? FACTION_HEX[rivals[p - 1]] ?? '#e6eaff' : '#e6eaff'), 0, 0, cv.width / m.width, true, battleMarks(run, n));
   }
   return cv;
 }

@@ -907,6 +907,7 @@ export function pauseMenu(h: {
   quit: () => void;
   audio: AudioEngine;
   quitLabel?: string;
+  restartLabel?: string;
   teams?: string;
   title?: string;
   note?: string;
@@ -922,7 +923,7 @@ export function pauseMenu(h: {
         <p class="note hint"${h.note ? '' : ' hidden'}>${h.note ?? ''}</p>
         <div class="menu-buttons">
           <button class="primary" data-a="resume">${h.resumeLabel ?? 'Resume'}</button>
-          ${h.restart ? '<button data-a="restart">Restart match</button>' : ''}
+          ${h.restart ? `<button data-a="restart">${h.restartLabel ?? 'Restart match'}</button>` : ''}
           ${(h.more ?? []).map((b, i) => `<button data-more="${i}">${b.label}</button>`).join('')}
           <button data-a="quit">${h.quitLabel ?? 'Quit to menu'}</button>
         </div>

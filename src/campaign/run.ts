@@ -81,13 +81,15 @@ export interface DifficultyRules {
   heartCarry: number;
   /** share of the node's reward a lost battle still pays (#68) */
   salvage: number;
+  /** lost battles that can be fought again this run, for biomass (#253) */
+  retries: number;
 }
 export const DIFFICULTIES: RunDifficulty[] = ['gentle', 'standard', 'hard', 'brutal'];
 export const RUN_DIFFICULTY: Record<RunDifficulty, DifficultyRules> = {
-  gentle: { name: 'Gentle', blurb: 'A slow Bloom that waits while you recover from a loss, lighter losses, and easier battles.', pace: 0.45, holdOnLoss: true, bots: -1, finale: { rivals: 2, difficulty: 2 }, lossKeep: 0.75, rivalProd: 0.8, heartCarry: 0.75, salvage: 0.35 },
-  standard: { name: 'Standard', blurb: 'The Bloom leaves room for a lost battle or two.', pace: 0.45, holdOnLoss: false, bots: 0, finale: { rivals: 2, difficulty: 2 }, lossKeep: 0.5, rivalProd: 0.9, heartCarry: 0.5, salvage: 0.35 },
-  hard: { name: 'Hard', blurb: 'A faster Bloom: little room for losses.', pace: 0.5, holdOnLoss: false, bots: 0, finale: { rivals: 3, difficulty: 2 }, lossKeep: 0.5, rivalProd: 1, heartCarry: 0.25, salvage: 0.2 },
-  brutal: { name: 'Brutal', blurb: 'Hard\'s Bloom, Brutal bots in the late battles, and a finale where the rivals must fall too.', pace: 0.5, holdOnLoss: false, bots: 1, finale: { rivals: 2, difficulty: 2 }, lossKeep: 0.5, rivalProd: 1, heartCarry: 0, salvage: 0 },
+  gentle: { name: 'Gentle', blurb: 'A slow Bloom that waits while you recover from a loss, lighter losses, and easier battles.', pace: 0.45, holdOnLoss: true, bots: -1, finale: { rivals: 2, difficulty: 2 }, lossKeep: 0.75, rivalProd: 0.8, heartCarry: 0.75, salvage: 0.35, retries: 3 },
+  standard: { name: 'Standard', blurb: 'The Bloom leaves room for a lost battle or two.', pace: 0.45, holdOnLoss: false, bots: 0, finale: { rivals: 2, difficulty: 2 }, lossKeep: 0.5, rivalProd: 0.9, heartCarry: 0.5, salvage: 0.35, retries: 2 },
+  hard: { name: 'Hard', blurb: 'A faster Bloom: little room for losses.', pace: 0.5, holdOnLoss: false, bots: 0, finale: { rivals: 3, difficulty: 2 }, lossKeep: 0.5, rivalProd: 1, heartCarry: 0.25, salvage: 0.2, retries: 1 },
+  brutal: { name: 'Brutal', blurb: 'Hard\'s Bloom, Brutal bots in the late battles, and a finale where the rivals must fall too.', pace: 0.5, holdOnLoss: false, bots: 1, finale: { rivals: 2, difficulty: 2 }, lossKeep: 0.5, rivalProd: 1, heartCarry: 0, salvage: 0, retries: 0 },
 };
 /** saves from before difficulty were Standard */
 export const difficultyOf = (run: { difficulty?: RunDifficulty }): RunDifficulty => run.difficulty ?? 'standard';
@@ -234,6 +236,15 @@ export interface RunState {
   created: number;
   updated: number;
   log: { turn: number; node: number; won: boolean }[];
+  /** lost battles fought again so far (#253) */
+  retried?: number;
+  /** the battle being fought again, and how many times: each retry of it costs more */
+  retrying?: { node: number; tries: number };
+  /**
+   * A loss waiting on the player's choice, fight again or take it (#253).
+   * Saved before the choice is shown, so leaving the page can't skip the loss.
+   */
+  pendingLoss?: { node: number; report: BattleReport; fielded: number[] };
 }
 
 // ---- generation -----------------------------------------------------------
@@ -631,6 +642,9 @@ export function resolveTurn(run: RunState, id: number, report: BattleReport | nu
   const lord = report ? warlordFighting(run, id) : undefined;
   run.turn++;
   run.updated = now;
+  // The battle is settled: a later fight here starts its retry price afresh.
+  run.retrying = undefined;
+  run.pendingLoss = undefined;
   if (report) {
     run.log.push({ turn: run.turn, node: id, won });
     const fought = fighters(run.broods, fielded, maxFielded(run)).map((b) => b.id);
@@ -706,7 +720,8 @@ export function resolveTurn(run: RunState, id: number, report: BattleReport | nu
 function restoreCheckpoint(run: RunState, now: number): void {
   const saved = JSON.parse(run.checkpointSave!) as RunState;
   const log = run.log;
-  Object.assign(run, saved, { log, checkpointSave: undefined, checkpointUsed: true, updated: now, status: 'active', lostTo: undefined, offer: undefined, recruit: undefined });
+  // Retries are run-wide (#253): rewinding to the checkpoint doesn't give them back.
+  Object.assign(run, saved, { log, retried: run.retried, retrying: undefined, pendingLoss: undefined, checkpointSave: undefined, checkpointUsed: true, updated: now, status: 'active', lostTo: undefined, offer: undefined, recruit: undefined });
 }
 
 // ---- camp -----------------------------------------------------------------
@@ -739,6 +754,30 @@ export function unlock(run: RunState, u: Unlock): boolean {
   run.biomass -= unlockCost(run, u);
   if (u === 'nova') run.unlocks.nova = true;
   else run.unlocks.nests |= 1 << u;
+  return true;
+}
+
+// ---- fighting a lost battle again (#253) -----------------------------------
+
+/** A retry costs half the node's reward (at least min), and half again for each retry of the same battle. */
+export const RETRY = { share: 0.5, min: 10, rise: 0.5 };
+
+export const retriesLeft = (run: RunState): number => Math.max(0, RUN_DIFFICULTY[difficultyOf(run)].retries - (run.retried ?? 0));
+
+export function retryCost(run: RunState, id: number): number {
+  const tries = run.retrying?.node === id ? run.retrying.tries : 0;
+  return Math.round(Math.max(RETRY.min, run.nodes[id].reward * RETRY.share) * (1 + RETRY.rise * tries));
+}
+
+export const canRetry = (run: RunState, id: number): boolean => run.status === 'active' && retriesLeft(run) > 0 && run.biomass >= retryCost(run, id);
+
+/** Pay for fighting this battle again, from the start. Returns false (and changes nothing) if it can't be paid for. */
+export function payRetry(run: RunState, id: number): boolean {
+  if (!canRetry(run, id)) return false;
+  run.biomass -= retryCost(run, id);
+  run.retried = (run.retried ?? 0) + 1;
+  run.retrying = { node: id, tries: (run.retrying?.node === id ? run.retrying.tries : 0) + 1 };
+  run.pendingLoss = undefined;
   return true;
 }
 

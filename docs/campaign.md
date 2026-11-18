@@ -175,6 +175,7 @@ Persistent named squads, each of one unit kind: Swarmers, Shields, Spears or Rai
   - Strains also tie into routing: Spears need a Spire on the map, and previews show each map's nest mix.
 - **Size from survivors:** after a battle, a brood's size is set by how many of its dots survived, up to a cap. Veterancy rises with wins.
 - **Losing a battle** wounds the fielded broods (they sit out one battle). A brood that ends a battle with almost no survivors dies.
+- **Fighting a lost battle again** (#253): before a loss is applied, you can pay biomass to fight the same battle again from the start. A run has a few retries by difficulty (Gentle 3, Standard 2, Hard 1, Brutal 0). A retry costs half the node's reward (at least 10), and half again for each retry of the same battle. The pending loss is saved before the choice, so leaving the page doesn't skip it. Restart in the pause menu is a retry too, at the same price. A checkpoint restore doesn't give retries back.
 - **New broods** come from rescue rewards, often in warlord domains.
 - **The run ends** when you have no broods left to field, unless the checkpoint saves you.
 
@@ -183,7 +184,8 @@ Biomass is earned per battle: nests held at the end, survivors, and speed. You s
 - heal a wounded brood;
 - grow a brood's size cap;
 - unlock a nest type or a power for the run (you start with Hive, plus Surge);
-- reroll a reward offer.
+- reroll a reward offer;
+- fight a lost battle again (see Broods).
 
 ## Rewards
 After every won node, **pick 1 of 3** offers.

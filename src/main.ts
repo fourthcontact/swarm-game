@@ -19,7 +19,7 @@ import { PERSONALITIES } from './sim/ai/bot';
 import { Kind, MAX_UNITS, NEUTRAL, TICK_HZ } from './sim/constants';
 import type { MatchSetup } from './sim/setup';
 import { spawnUnit } from './sim/world';
-import { mapBloom, needsBattle, newRun, resolveTurn, type RunNode, type RunState, type TurnResult } from './campaign/run';
+import { canRetry, mapBloom, needsBattle, newRun, payRetry, resolveTurn, retryCost, type RunNode, type RunState, type TurnResult } from './campaign/run';
 import { battleType, briefingFor, briefsSeen, markBriefSeen, resetBriefs, type BriefLord } from './campaign/briefings';
 import type { BattleReport } from './campaign/broods';
 import { battleReport, nodeSetup, warlordOf } from './campaign/battle';
@@ -31,6 +31,7 @@ import { FORTIFY } from './sim/fortify';
 import { deleteRun, finishRun, listRuns, loadHistory, saveRun } from './campaign/store';
 import { recruitPick, rewardPick, runDebrief, runHub, runMap, starterPick, type MapIntro } from './ui/campaign';
 import { runHowTo } from './ui/runtour';
+import { retryOffer } from './ui/retry';
 import { loadGuide, saveGuide, wantsTour } from './campaign/tour';
 import { DemoOverlay } from './ui/demo';
 import { Hud } from './ui/hud';
@@ -490,6 +491,8 @@ class App {
 
   private showRunMap(run: RunState, intro: MapIntro | null = null, tour = false): void {
     if (this.game) this.showMenu();
+    // A loss left waiting on the retry choice (#253): that comes first, also when resuming a run.
+    if (run.pendingLoss && run.status === 'active') return this.offerRetry(run);
     // A rescued brood waiting for a place, then a reward waiting to be picked, come first (also when resuming a run).
     if (run.recruit && run.status === 'active') {
       this.setModal(recruitPick(run, this.sfx, { save: () => saveRun(run), done: () => this.showRunMap(run, intro, tour) }));
@@ -598,6 +601,11 @@ class App {
       this.showRunMap(run, this.runIntro(from, res));
       return;
     }
+    this.fightRunBattle(run, id, fielded);
+  }
+
+  /** Start a run battle: the setup comes from the node seed and the run, so a retry (#253) is the same battle. */
+  private fightRunBattle(run: RunState, id: number, fielded: number[]): void {
     const node = run.nodes[id];
     this.startGame(nodeSetup(run, id, fielded), { scenario: `campaign: ${node.kind}`, goal: false });
     this.run = { state: run, node: id, fielded };
@@ -660,11 +668,43 @@ class App {
     if (res.checkpoint === 'restored') s.checkpointRestart();
   }
 
-  /** The battle is over (or abandoned): update the run and show the debrief. */
+  /** The battle is over (or abandoned): offer a retry after a loss (#253), else update the run and show the debrief. */
   private finishRunBattle(report: BattleReport): void {
     const r = this.run;
     if (!r) return;
     this.run = null;
+    if (!report.won && canRetry(r.state, r.node) && !r.state.id.startsWith(PLAYTEST)) {
+      // Saved before the choice, so leaving now still takes the loss.
+      r.state.pendingLoss = { node: r.node, report, fielded: r.fielded };
+      this.saveRunState(r.state);
+      return this.offerRetry(r.state);
+    }
+    this.resolveRunBattle(r, report);
+  }
+
+  /** A loss waiting on the player (#253): pay to fight again, or take it. */
+  private offerRetry(run: RunState): void {
+    const p = run.pendingLoss!;
+    const accept = () => {
+      run.pendingLoss = undefined;
+      this.resolveRunBattle({ state: run, node: p.node, fielded: p.fielded }, p.report);
+    };
+    // No longer affordable (a save from another build, say): the loss stands.
+    if (!canRetry(run, p.node)) return accept();
+    this.setModal(
+      retryOffer(run, p.node, {
+        again: () => {
+          if (!payRetry(run, p.node)) return accept();
+          this.saveRunState(run);
+          this.fightRunBattle(run, p.node, p.fielded);
+        },
+        accept,
+      }),
+    );
+  }
+
+  /** Settle a run battle: resolve the turn, save, and show the debrief. */
+  private resolveRunBattle(r: { state: RunState; node: number; fielded: number[] }, report: BattleReport): void {
     const from = r.state.bloom.time;
     const res = resolveTurn(r.state, r.node, report, r.fielded);
     this.saveRunState(r.state);
@@ -1855,8 +1895,11 @@ class App {
       this.setModal(
         pauseMenu({
           resume: () => this.togglePause(),
-          restart: () => {
+          // A campaign battle's Restart is a retry (#253): it costs the same, and only while one is left.
+          restart: this.run && !canRetry(this.run.state, this.run.node) ? undefined : () => {
             const run = this.run;
+            if (run && !payRetry(run.state, run.node)) return;
+            if (run) this.saveRunState(run.state);
             if (g.mission) this.playMission(g.mission.index, 'restart');
             else this.startGame(g.setup, { scenario: g.rec?.scenario, seat: g.human >= 0 ? g.human : undefined, goal: !run }, 'restart');
             this.run = run;
@@ -1871,6 +1914,7 @@ class App {
             this.finishRunBattle(report);
           },
           quitLabel: this.run ? 'Retreat (counts as a loss)' : undefined,
+          restartLabel: this.run ? `Restart · ${retryCost(this.run.state, this.run.node)} biomass` : undefined,
           audio: this.sfx,
           // Who's on your team (#74), in a team match.
           teams: teamLayout(g.world, g.human).team ? teamsList(g.world, g.human) : undefined,

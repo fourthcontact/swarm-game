@@ -70,12 +70,18 @@ export function initHeart(w: World, strength: number, rule: HeartRule, wound = 0
   // Only the heart launches Bloom-owned strikes.
   w.factions[NEUTRAL].mods = { ...w.factions[NEUTRAL].mods, barrageBudget: HEART.lobBudget };
   const count = Math.min(HEART.nestsMax, 2 + Math.floor(strength / HEART.nestsPer));
-  const nests = w.nests
+  // Only nests you can walk to from the heart can be wards: with the ward gate
+  // (#252) one you can't reach would leave the heart unhurtable. Mapgen keeps
+  // every nest connected, so this is a guard, not a change on today's maps.
+  const nests: number[] = [];
+  const near = w.nests
     .filter((n) => n.owner === NEUTRAL)
-    .map((n) => ({ id: n.id, d: (n.x - x) ** 2 + (n.y - y) ** 2 }))
-    .sort((a, b) => a.d - b.d || a.id - b.id)
-    .slice(0, count)
-    .map((n) => n.id);
+    .map((n) => ({ n, d: (n.x - x) ** 2 + (n.y - y) ** 2 }))
+    .sort((a, b) => a.d - b.d || a.n.id - b.n.id);
+  for (const { n } of near) {
+    if (nests.length >= count) break;
+    if (w.terrain.connected([[x, y], [n.x, n.y]])) nests.push(n.id);
+  }
   const t = w.tick;
   w.heart = {
     uid: w.uid[s],
@@ -137,6 +143,12 @@ export function standingNests(w: World): number {
  */
 export function heartWard(w: World): number {
   return standingNests(w) > 0 ? 0 : 1;
+}
+
+/** Slot of the living heart while a ward still shields it (#252), or -1: units don't target it then. */
+export function shieldedHeart(w: World): number {
+  const s = heartSlot(w);
+  return s >= 0 && standingNests(w) > 0 ? s : -1;
 }
 
 /** Slot of the living heart, or -1. */

@@ -165,12 +165,17 @@ export class Proxy {
     return n;
   }
 
-  /** The heart's nearest Bloom nest still standing (#252), or null. Ties go to the lower id. */
-  private nearestWard(w: World, x: number, y: number): Nest | null {
+  /**
+   * The heart's nearest Bloom nest still standing (#252) that a blob of `size`
+   * can take, or null. Ties go to the earlier ward in `heart.nests`. A ward
+   * too well held is skipped, like any other nest, so the blob grows on
+   * easier ground instead of throwing itself at it again and again.
+   */
+  private nearestWard(w: World, x: number, y: number, size: number): Nest | null {
     let best: Nest | null = null, bestD = Infinity;
     for (const id of w.heart?.nests ?? []) {
       const n = w.nests[id];
-      if (n.owner !== NEUTRAL) continue;
+      if (n.owner !== NEUTRAL || this.defense(w, n) * this.k.margin + 3 > size) continue;
       const d = (n.x - x) ** 2 + (n.y - y) ** 2;
       if (d < bestD) (best = n), (bestD = d);
     }
@@ -330,10 +335,11 @@ export class Proxy {
       // The Bloom's heart (campaign finale). It can't be hurt while a Bloom nest
       // stands (#252), so like a player, the blob takes the nearest ward first.
       const heart = heartSlot(w);
-      const ward = heart >= 0 && blob.length >= 45 ? this.nearestWard(w, bx, by) : null;
+      const ward = heart >= 0 && blob.length >= 45 ? this.nearestWard(w, bx, by, blob.length) : null;
       if (ward && (this.goal !== ward.id || w.tick - this.lastOrder >= this.k.refresh * TICK_HZ)) {
         const units = this.straggle(w, blob, bx, by);
         out.push({ t: 'move', p: me, units: units.map((s) => w.uid[s]), x: ward.x, y: ward.y, nest: ward.id });
+        if (mine.length && this.goal !== ward.id) out.push({ t: 'rally', p: me, nests: mine.map((n) => n.id), x: ward.x, y: ward.y });
         this.goal = ward.id;
         this.lastOrder = w.tick;
       }

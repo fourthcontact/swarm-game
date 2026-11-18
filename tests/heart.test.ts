@@ -2,22 +2,24 @@ import { describe, expect, it } from 'vitest';
 import { nodeSetup } from '../src/campaign/battle';
 import { newRun } from '../src/campaign/run';
 import { Kind, NEUTRAL, NestType, TICK_HZ } from '../src/sim/constants';
-import { resolveDamage } from '../src/sim/combat';
+import { resolveDamage, updateCombat } from '../src/sim/combat';
 import { initEvents } from '../src/sim/events';
 import { worldHash } from '../src/sim/hash';
-import { HEART, heartSlot, heartWard, initHeart, standingNests } from '../src/sim/heart';
+import { HEART, heartSlot, heartWard, initHeart, shieldedHeart, standingNests } from '../src/sim/heart';
 import type { EventParams } from '../src/sim/mapgen';
 import { createWorld } from '../src/sim/setup';
 import { step } from '../src/sim/step';
 import { Proxy } from '../src/proxy/proxy';
 import { spawnUnit, World, type HeartRule } from '../src/sim/world';
+import type { TerrainSpec } from '../src/sim/terrain';
+import type { Command } from '../src/sim/commands';
 
 // Events must be on for the heart; nothing else should fire during a test.
 const QUIET: EventParams = { swarm: null, drop: { first: 1e6, every: 1e6 }, colossus: [], regrow: 0 };
 
 /** Faction 0 (human) and 1 (bot) on a 1200 × 900 field, two neutral nests near the middle. */
-function arena(rule: HeartRule = 'heart', strength = 0): World {
-  const w = new World(5, 1200, 900);
+function arena(rule: HeartRule = 'heart', strength = 0, terrain?: TerrainSpec): World {
+  const w = new World(5, 1200, 900, terrain);
   for (const f of [0, 1]) {
     w.factions[f].active = true;
     w.setTeam(f, f);
@@ -80,6 +82,58 @@ describe("the Bloom's heart", () => {
     step(w, []);
     w.nests[0].owner = NEUTRAL;
     expect(standingNests(w)).toBe(1);
+  });
+
+  it('only wakes nests you can walk to from it (#252)', () => {
+    // A closed ring of wall round the west nest: with the ward gate, a ward
+    // nobody can reach would leave the heart unhurtable for good.
+    const ring = [[-1, -1, 1, -1], [1, -1, 1, 1], [1, 1, -1, 1], [-1, 1, -1, -1]].map(([a, b, c, d]) => ({ x1: 400 + a * 70, y1: 450 + b * 70, x2: 400 + c * 70, y2: 450 + d * 70, r: 12 }));
+    const w = arena('heart', 0, { walls: ring, fields: [], crystals: [] });
+    expect(w.heart!.nests).toEqual([1]);
+  });
+
+  it("units don't fire at it while it's shielded, and do once every ward falls (#252)", () => {
+    const w = arena();
+    const h = w.heart!, s = heartSlot(w);
+    expect(shieldedHeart(w)).toBe(s);
+    const mine = units(w, 0, Kind.Dot, 8, h.x - 40, h.y);
+    step(w, []);
+    for (const u of mine) if (w.alive[u]) expect(w.tgt[u]).not.toBe(s);
+    for (const id of h.nests) w.nests[id].owner = 0;
+    expect(shieldedHeart(w)).toBe(-1);
+    updateCombat(w);
+    expect(mine.some((u) => w.alive[u] && w.tgt[u] === s)).toBe(true);
+  });
+
+  // The human proxy (#252): wards first, with its nests rallying there, but
+  // never a ward too well held for its blob.
+  const wardOrders = (w: World) => {
+    const proxy = new Proxy(0, { skill: 1 });
+    const out: Command[] = [];
+    // One step first, so the spatial grid holds the units.
+    step(w, []);
+    for (let t = 0; t < 6 * TICK_HZ; t++) {
+      const cmds = proxy.think(w);
+      out.push(...cmds);
+      step(w, cmds);
+    }
+    const wards = new Set(w.heart!.nests);
+    return { moves: out.filter((c) => c.t === 'move' && wards.has(c.nest)), rallies: out.filter((c) => c.t === 'rally') };
+  };
+  it('the proxy marches on the nearest ward and rallies its nests there', () => {
+    const w = arena();
+    units(w, 0, Kind.Dot, 60, 160, 160);
+    const { moves, rallies } = wardOrders(w);
+    expect(moves.length).toBeGreaterThan(0);
+    const first = moves[0] as Extract<Command, { t: 'move' }>;
+    expect(first.nest).toBe(0);
+    expect(rallies.some((c) => c.t === 'rally' && c.x === w.nests[0].x && c.y === w.nests[0].y)).toBe(true);
+  });
+  it("the proxy leaves a ward it can't take", () => {
+    const w = arena();
+    for (const id of w.heart!.nests) units(w, NEUTRAL, Kind.Tank, 40, w.nests[id].x - 14, w.nests[id].y - 30);
+    units(w, 0, Kind.Dot, 60, 160, 160);
+    expect(wardOrders(w).moves).toEqual([]);
   });
 
   it('telegraphs its pulse, which hits what is inside its ring and nothing else', () => {

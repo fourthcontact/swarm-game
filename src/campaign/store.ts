@@ -4,7 +4,7 @@
  */
 
 import { PLAYTEST } from './playtest';
-import { RUN_VERSION, type RunState, type RunStatus } from './run';
+import { difficultyOf, RUN_DIFFICULTY, RUN_VERSION, type RunState, type RunStatus } from './run';
 
 const PREFIX = `swarm.run.v${RUN_VERSION}.`;
 /** every run version's saves start with this (the history key doesn't) */
@@ -40,6 +40,9 @@ export function loadRun(id: string): RunState | null {
     run.bloom.time ??= 0;
     run.bloom.seeds ??= [];
     for (const b of run.broods) b.strains ??= [];
+    // The finale's rivals are copied into the map when a run starts. Refresh
+    // them, so a run from an older build fights today's finale (#252).
+    for (const n of run.nodes) if (n.kind === 'finale') Object.assign(n, RUN_DIFFICULTY[difficultyOf(run)].finale);
     return run;
   } catch {
     return null;

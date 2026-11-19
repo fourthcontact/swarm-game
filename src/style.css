@@ -1158,7 +1158,41 @@ body.mobile .coach .coach-row button { padding: 3px 10px; font-size: 12px; }
 .node-card dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; margin: 10px 0; font-size: 14px; }
 .node-card dt { color: var(--muted); }
 .node-card dd { margin: 0; }
-.battle-map-slot { margin-top: 6px; }
+.battle-map-slot { display: block; position: relative; margin-top: 6px; padding: 0; border: 0; background: none; cursor: zoom-in; }
+.battle-map-slot .enlarge { position: absolute; right: 6px; bottom: 6px; padding: 2px 7px; border-radius: 4px; background: rgba(4, 5, 12, 0.75); color: var(--muted); font-size: 11px; }
+.battle-map-slot:hover .enlarge, .battle-map-slot:focus-visible .enlarge { color: var(--accent); }
+/* A closer look at a battle (#249): the map large, labelled, with a key; and a rival's card. */
+.node-card.wide { width: min(780px, 100%); max-height: 100%; overflow-y: auto; }
+.node-card button[data-a=back] { margin-top: 10px; }
+.big-map { position: relative; width: fit-content; max-width: 100%; margin: 8px auto 0; }
+.big-map canvas { display: block; max-width: 100%; height: auto !important; border: 1px solid var(--line); border-radius: 8px; }
+.home-tag { position: absolute; transform: translate(-50%, calc(-100% - 12px)); padding: 2px 7px; border-radius: 10px; border: 1px solid var(--c); background: rgba(4, 5, 12, 0.85); color: var(--c); font-size: 12px; font-weight: 600; white-space: nowrap; pointer-events: none; }
+.home-tag[data-rival] { pointer-events: auto; cursor: pointer; }
+.home-tag[data-rival]:hover, .home-tag[data-rival]:focus-visible { background: color-mix(in srgb, var(--c) 25%, rgba(4, 5, 12, 0.9)); }
+.home-tag.heart { --c: #c04a9a; }
+.map-key { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 10px 0 0; padding: 0; list-style: none; font-size: 12px; color: var(--muted); }
+.map-key li { display: flex; align-items: center; gap: 6px; }
+.map-key i { flex: none; display: inline-block; width: 10px; height: 10px; }
+.map-key .dot { border-radius: 50%; background: var(--c); }
+.map-key .dot.neutral { background: #e6eaff; opacity: 0.65; width: 7px; height: 7px; }
+.map-key .dot.crystal { background: rgba(120, 230, 255, 0.7); width: 7px; height: 7px; }
+.map-key .ring { border-radius: 50%; border: 2px solid; }
+.map-key .ring.gold { border-color: rgb(242, 196, 92); }
+.map-key .ring.citadel { border: 2px dashed #fff; }
+.map-key .ring.bloom { border-color: #c04a9a; }
+.map-key .star { background: #c04a9a; clip-path: polygon(50% 0, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%); }
+.map-key .bar { height: 5px; border-radius: 3px; }
+.map-key .bar.wall { background: rgba(150, 170, 255, 0.7); }
+.map-key .bar.nebula { background: rgba(150, 90, 220, 0.6); }
+.map-key .bar.rift { background: rgba(255, 70, 70, 0.6); }
+.map-key .bar.rock { background: rgba(70, 85, 150, 0.8); }
+.node-card .rival[data-rival] { cursor: pointer; border-radius: 8px; }
+.node-card .rival[data-rival]:hover .who b, .node-card .rival[data-rival]:focus-visible .who b { text-decoration: underline; }
+.rival-card { display: flex; align-items: center; gap: 12px; margin: 8px 0; }
+.rival-card .portrait { flex: none; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--c) 18%, transparent), transparent 70%); }
+.rival-card .who { display: flex; flex-direction: column; line-height: 1.25; }
+.rival-card .who b { color: var(--c); font-size: 17px; }
+.rival-card .who small { color: var(--muted); font-size: 13px; }
 .node-card h3.with-sigil { display: flex; align-items: center; gap: 10px; }
 .sigil-slot canvas { display: block; }
 .battle-map-slot canvas { display: block; border: 1px solid var(--line); border-radius: 6px; max-width: 100%; height: auto !important; }
@@ -1231,7 +1265,12 @@ canvas.creature { display: block; }
   width: min(760px, 100%); max-height: 100%; display: grid; grid-template-columns: 132px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr);
   gap: 12px 16px; padding: 18px 20px;
 }
-.camp-card header { grid-column: 1 / -1; display: flex; align-items: center; gap: 14px; }
+.camp-card header { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+/* Cornered (#253): keep a retry's price. */
+.camp-warn { flex-basis: 100%; margin: 0; padding: 8px 10px; border: 1px solid rgba(224, 160, 64, 0.5); border-radius: 8px; background: rgba(224, 160, 64, 0.1); color: #f0c070; font-size: 13px; line-height: 1.4; }
+.camp-warn[hidden] { display: none; }
+/* A lost battle's debrief (#253): what reopening it costs. */
+.run-debrief .retry-note { padding: 8px 10px; border: 1px solid rgba(224, 160, 64, 0.5); border-radius: 8px; background: rgba(224, 160, 64, 0.1); color: #f0c070; font-size: 14px; line-height: 1.45; }
 .camp-card header h3 { margin: 0; font-size: 15px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); }
 .camp-biomass { position: relative; margin-left: auto; color: var(--muted); font-size: 14px; }
 .camp-biomass b { color: #b4ff39; font-size: 20px; font-variant-numeric: tabular-nums; }

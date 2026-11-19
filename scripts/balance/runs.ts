@@ -7,7 +7,7 @@
 import { nodeSetup } from '../../src/campaign/battle';
 import { COST, KIND_NEST, MIN_SIZE, UNLOCKS, fit, type PackId, type Unlock } from '../../src/campaign/broods';
 import { REWARD, STRAIN_SLOTS, TIER_WEIGHT } from '../../src/campaign/rewards';
-import { type RunDifficulty, bloomStrength, grow, heal, hops, maxFielded, moves, needsBattle, newRun, pressure, resolveTurn, skipRecruit, takeRecruit, takeReward, unlock, unlockCost, unlocked, warlordFighting, type RunState } from '../../src/campaign/run';
+import { type RunDifficulty, bloomStrength, canRetry, endRun, grow, heal, hops, maxFielded, moves, needsBattle, newRun, payRetry, pressure, resolveTurn, sealedMoves, stranded, wayOn, skipRecruit, takeRecruit, takeReward, unlock, unlockCost, unlocked, warlordFighting, type RunState } from '../../src/campaign/run';
 import type { ProxyKnobs } from '../../src/proxy/proxy';
 import { CAP, classOf, type BattleClass, type Fight, type Result } from './battle';
 import type { Pool } from './pool';
@@ -112,10 +112,13 @@ export function pickBroods(run: RunState): number[] {
     .map((b) => b.id);
 }
 
-/** Next node: one step along the shortest open route to the heart; ties go to easier, then rescue, nodes. */
+/**
+ * Next node: one step along the shortest open route to the heart; ties go to easier, then rescue, nodes.
+ * A sealed node (#253) it can pay to reopen counts too: playRun pays for it.
+ */
 export function pickMove(run: RunState): number {
   const back = hops(run.nodes, run.heart, (id) => run.swallowed.includes(id));
-  const options = moves(run);
+  const options = [...moves(run), ...sealedMoves(run).filter((id) => canRetry(run, id))];
   const rank = (id: number) => {
     const n = run.nodes[id];
     const d = back[id] < 0 ? 999 : back[id];
@@ -157,6 +160,17 @@ export function pickReward(run: RunState): string | null {
 
 /** Camp: heal when short of fit broods, unlock what our broods' kinds need (then Nova), then grow caps. */
 export function spend(run: RunState, bought: Record<string, number>): void {
+  // Like a player heeding the camp's warning (#253): keep a retry's price when it's the only way on.
+  const keep = wayOn(run).reserve;
+  run.biomass -= keep;
+  try {
+    shop(run, bought);
+  } finally {
+    run.biomass += keep;
+  }
+}
+
+function shop(run: RunState, bought: Record<string, number>): void {
   const buy = (what: string, ok: boolean) => ok && (bought[what] = (bought[what] ?? 0) + 1);
   for (const b of run.broods) if (b.wounded && run.broods.filter(fit).length < maxFielded(run)) buy('heal', heal(run, b.id));
   const wanted: Unlock[] = [...new Set(run.broods.map((b) => KIND_NEST[b.kind]))].filter((t) => UNLOCKS.includes(t));
@@ -189,8 +203,12 @@ export async function playRun(fight: Fight | Pool, seed: number, o: RunOptions):
     run.offer = undefined;
     if (run.turn > 0) out.camps.push({ t: Math.min(1, run.nodes[run.at].depth / out.far), banked: run.biomass, all: run.biomass >= wishCost(run) });
     spend(run, out.bought);
+    // Spending can leave no way on (#253): the run ends as it would on the map.
+    if (stranded(run) && (endRun(run, 'bloom', 0), run.status !== 'active')) break;
     if (out.allNests === undefined && UNLOCKS.every((u) => unlocked(run, u))) out.allNests = out.battles.filter((b) => b.won).length;
     const id = pickMove(run);
+    // A sealed node is paid for before it's fought (#253); pickMove only offers ones it can pay for.
+    if (run.sealed?.includes(id) && !payRetry(run, id)) throw new Error(`probe ${seed}: can't pay to reopen node ${id}`);
     const node = run.nodes[id];
     if (!needsBattle(run, id)) {
       resolveTurn(run, id, null, [], 0);

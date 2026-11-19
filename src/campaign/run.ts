@@ -67,8 +67,8 @@ export interface DifficultyRules {
   blurb: string;
   /** Bloom pace, as a share of the fastest the shortest route survives */
   pace: number;
-  /** a lost battle doesn't advance the Bloom */
-  holdOnLoss: boolean;
+  /** share of a turn's Bloom advance after a lost battle (#253: Gentle's Bloom slows, it doesn't stop) */
+  lossStep: number;
   /** bot difficulty shift: -1 on Normal nodes (Gentle), +1 on Hard nodes (Brutal, whose finale also needs the rivals beaten) */
   bots: -1 | 0 | 1;
   /** the finale's rivals and their bot difficulty (#68: it was the wall, a quarter of attempts won at 3 Hard rivals) */
@@ -81,13 +81,15 @@ export interface DifficultyRules {
   heartCarry: number;
   /** share of the node's reward a lost battle still pays (#68) */
   salvage: number;
+  /** lost battles that can be fought again this run, for biomass (#253) */
+  retries: number;
 }
 export const DIFFICULTIES: RunDifficulty[] = ['gentle', 'standard', 'hard', 'brutal'];
 export const RUN_DIFFICULTY: Record<RunDifficulty, DifficultyRules> = {
-  gentle: { name: 'Gentle', blurb: 'A slow Bloom that waits while you recover from a loss, lighter losses, and easier battles.', pace: 0.45, holdOnLoss: true, bots: -1, finale: { rivals: 2, difficulty: 2 }, lossKeep: 0.75, rivalProd: 0.8, heartCarry: 0.75, salvage: 0.35 },
-  standard: { name: 'Standard', blurb: 'The Bloom leaves room for a lost battle or two.', pace: 0.45, holdOnLoss: false, bots: 0, finale: { rivals: 2, difficulty: 2 }, lossKeep: 0.5, rivalProd: 0.9, heartCarry: 0.5, salvage: 0.35 },
-  hard: { name: 'Hard', blurb: 'A faster Bloom: little room for losses.', pace: 0.5, holdOnLoss: false, bots: 0, finale: { rivals: 3, difficulty: 2 }, lossKeep: 0.5, rivalProd: 1, heartCarry: 0.25, salvage: 0.2 },
-  brutal: { name: 'Brutal', blurb: 'Hard\'s Bloom, Brutal bots in the late battles, and a finale where the rivals must fall too.', pace: 0.5, holdOnLoss: false, bots: 1, finale: { rivals: 2, difficulty: 2 }, lossKeep: 0.5, rivalProd: 1, heartCarry: 0, salvage: 0 },
+  gentle: { name: 'Gentle', blurb: 'A slow Bloom that slows further after a loss, lighter losses, and easier battles.', pace: 0.45, lossStep: 0.5, bots: -1, finale: { rivals: 2, difficulty: 2 }, lossKeep: 0.75, rivalProd: 0.8, heartCarry: 0.75, salvage: 0.35, retries: 3 },
+  standard: { name: 'Standard', blurb: 'The Bloom leaves room for a lost battle or two.', pace: 0.45, lossStep: 1, bots: 0, finale: { rivals: 2, difficulty: 2 }, lossKeep: 0.5, rivalProd: 0.9, heartCarry: 0.5, salvage: 0.35, retries: 2 },
+  hard: { name: 'Hard', blurb: 'A faster Bloom: little room for losses.', pace: 0.5, lossStep: 1, bots: 0, finale: { rivals: 3, difficulty: 2 }, lossKeep: 0.5, rivalProd: 1, heartCarry: 0.25, salvage: 0.2, retries: 1 },
+  brutal: { name: 'Brutal', blurb: 'Hard\'s Bloom, Brutal bots in the late battles, and a finale where the rivals must fall too.', pace: 0.5, lossStep: 1, bots: 1, finale: { rivals: 2, difficulty: 2 }, lossKeep: 0.5, rivalProd: 1, heartCarry: 0, salvage: 0, retries: 0 },
 };
 /** saves from before difficulty were Standard */
 export const difficultyOf = (run: { difficulty?: RunDifficulty }): RunDifficulty => run.difficulty ?? 'standard';
@@ -234,6 +236,12 @@ export interface RunState {
   created: number;
   updated: number;
   log: { turn: number; node: number; won: boolean }[];
+  /** lost battles reopened so far (#253) */
+  retried?: number;
+  /** retries paid per node (keys: node ids), so each retry of the same battle costs more; cleared when you win there */
+  tries?: Record<string, number>;
+  /** nodes you lost a battle at (#253): sealed until you pay to fight there again */
+  sealed?: number[];
 }
 
 // ---- generation -----------------------------------------------------------
@@ -564,8 +572,12 @@ export function moves(run: RunState): number[] {
   return run.nodes[run.at].links.filter((n) => canStep(run, run.at, n));
 }
 
-/** One step along a link: never into the Bloom; a new battle only ahead, a node you took any way. */
-export function canStep(run: RunState, from: number, to: number): boolean {
+/**
+ * One step along a link: never into the Bloom; a new battle only ahead, a node you took any way.
+ * Never onto a node you lost at (#253), unless `sealedToo`: then it says whether paying would open it.
+ */
+export function canStep(run: RunState, from: number, to: number, sealedToo = false): boolean {
+  if (!sealedToo && run.sealed?.includes(to)) return false;
   return !run.swallowed.includes(to) && (!needsBattle(run, to) || ahead(run.nodes, run.heart, from, to));
 }
 
@@ -641,6 +653,14 @@ export function resolveTurn(run: RunState, id: number, report: BattleReport | nu
     res.biomass = pay * (run.perks.includes('hunger') ? 2 : 1);
     run.biomass += res.biomass;
   }
+  // A lost battle seals its node (#253): only biomass reopens it. A won one is settled,
+  // so a later retry somewhere else starts its price afresh.
+  if (report && !won) {
+    run.sealed = [...(run.sealed ?? []).filter((n) => n !== id), id];
+  } else if (report && won) {
+    run.sealed = (run.sealed ?? []).filter((n) => n !== id);
+    if (run.tries) delete run.tries[id];
+  }
   if (won) {
     if (report && node.rescue !== undefined) {
       const b = newBrood(run.nextBrood++, node.rescue, run.seed, run.broods.map((o) => o.name), RESCUE_SIZE);
@@ -672,22 +692,16 @@ export function resolveTurn(run: RunState, id: number, report: BattleReport | nu
     run.heartWound = Math.min(HEART_WOUND_MAX, was + RUN_DIFFICULTY[difficultyOf(run)].heartCarry * Math.max(0, report.heart - was));
   }
 
-  // Gentle: the Bloom waits while you recover from a lost battle.
-  if (!(report && !report.won && RUN_DIFFICULTY[difficultyOf(run)].holdOnLoss)) run.bloom.time++;
+  // After a lost battle, Gentle's Bloom advances half a turn (#253).
+  run.bloom.time += report && !report.won ? RUN_DIFFICULTY[difficultyOf(run)].lossStep : 1;
   res.fresh = swallowedNow(run).filter((n) => !run.swallowed.includes(n));
   run.swallowed.push(...res.fresh);
   for (const w of run.warlords ?? []) if (!w.broken && res.fresh.includes(w.stronghold)) res.warlords.push({ id: w.id, what: 'eaten' });
 
-  const lost: RunState['lostTo'] = run.broods.length === 0 ? 'broods' : moves(run).length === 0 ? 'bloom' : undefined;
+  const lost: RunState['lostTo'] = run.broods.length === 0 ? 'broods' : stranded(run) ? 'bloom' : undefined;
   if (lost) {
-    if (run.checkpointSave && !run.checkpointUsed) {
-      restoreCheckpoint(run, now);
-      res.checkpoint = 'restored';
-      return res;
-    }
-    run.status = 'lost';
-    run.lostTo = lost;
-    return res;
+    res.checkpoint = endRun(run, lost, now);
+    if (res.checkpoint || run.status === 'lost') return res;
   }
   if (node.checkpoint && won && !run.checkpointSave && !run.checkpointUsed) {
     run.checkpointSave = JSON.stringify({ ...run, checkpointSave: undefined, log: [], offer: undefined, recruit: undefined });
@@ -702,11 +716,27 @@ export function resolveTurn(run: RunState, id: number, report: BattleReport | nu
   return res;
 }
 
+/**
+ * The run is lost: back to the checkpoint if it has one left ('restored'),
+ * else over. The camp can strand a run too (spending the price of a retry),
+ * so the map checks this as well as the turn.
+ */
+export function endRun(run: RunState, lostTo: NonNullable<RunState['lostTo']>, now = Date.now()): 'restored' | undefined {
+  if (run.checkpointSave && !run.checkpointUsed) {
+    restoreCheckpoint(run, now);
+    return 'restored';
+  }
+  run.status = 'lost';
+  run.lostTo = lostTo;
+  return undefined;
+}
+
 /** Back to the checkpoint, once. The run keeps its id and history. */
 function restoreCheckpoint(run: RunState, now: number): void {
   const saved = JSON.parse(run.checkpointSave!) as RunState;
   const log = run.log;
-  Object.assign(run, saved, { log, checkpointSave: undefined, checkpointUsed: true, updated: now, status: 'active', lostTo: undefined, offer: undefined, recruit: undefined });
+  // Retries are run-wide (#253): rewinding to the checkpoint doesn't give them back.
+  Object.assign(run, saved, { log, retried: run.retried, tries: run.tries, checkpointSave: undefined, checkpointUsed: true, updated: now, status: 'active', lostTo: undefined, offer: undefined, recruit: undefined });
 }
 
 // ---- camp -----------------------------------------------------------------
@@ -741,6 +771,74 @@ export function unlock(run: RunState, u: Unlock): boolean {
   else run.unlocks.nests |= 1 << u;
   return true;
 }
+
+// ---- fighting a lost battle again (#253) -----------------------------------
+//
+// A lost battle is a whole turn, and it seals the node. Paying biomass opens
+// it for one more try, as many times a run as the difficulty allows. With the
+// heart out of reach and no retry you can pay for, or earn the price of, the
+// Bloom takes the run.
+
+/**
+ * A retry costs half the node's reward (at least min), and half again for each retry of the same battle.
+ * The finale pays no reward: its retry is priced off the map's richest node.
+ */
+export const RETRY = { share: 0.5, min: 10, rise: 0.5 };
+
+export const retriesLeft = (run: RunState): number => Math.max(0, RUN_DIFFICULTY[difficultyOf(run)].retries - (run.retried ?? 0));
+
+export function retryCost(run: RunState, id: number): number {
+  const tries = run.tries?.[id] ?? 0;
+  const reward = id === run.heart ? Math.max(...run.nodes.map((n) => n.reward)) : run.nodes[id].reward;
+  return Math.round(Math.max(RETRY.min, reward * RETRY.share) * (1 + RETRY.rise * tries));
+}
+
+/** Sealed nodes you could step onto from where you stand, if you paid. */
+export const sealedMoves = (run: RunState): number[] =>
+  run.status !== 'active' ? [] : run.nodes[run.at].links.filter((n) => run.sealed?.includes(n) && canStep(run, run.at, n, true));
+
+export const canRetry = (run: RunState, id: number): boolean =>
+  run.status === 'active' && retriesLeft(run) > 0 && run.biomass >= retryCost(run, id) && sealedMoves(run).includes(id);
+
+/** Pay to fight at a sealed node again. Returns false (and changes nothing) if it can't be paid for. */
+export function payRetry(run: RunState, id: number): boolean {
+  if (!canRetry(run, id)) return false;
+  run.biomass -= retryCost(run, id);
+  run.retried = (run.retried ?? 0) + 1;
+  run.tries = { ...run.tries, [id]: (run.tries?.[id] ?? 0) + 1 };
+  run.sealed = run.sealed!.filter((n) => n !== id);
+  return true;
+}
+
+/** Sealed nodes a step from anywhere you can still reach: ones a retry could open. */
+export function reopenable(run: RunState): number[] {
+  const reach = reachable(run);
+  if (!reach) return [];
+  return (run.sealed ?? []).filter((s) => [...reach].some((a) => run.nodes[a].links.includes(s) && canStep(run, a, s, true)));
+}
+
+/**
+ * Where the run stands for a way on (#253). `stranded`: the heart is out of
+ * reach, and no sealed node in reach can be reopened, now or with biomass from
+ * a battle you can still fight. `reserve`: while a retry is the only way on and
+ * nothing in reach could pay for it, the biomass to keep for the cheapest one
+ * (spending below it strands the run); else 0.
+ */
+export function wayOn(run: RunState): { stranded: boolean; reserve: number } {
+  const none = { stranded: false, reserve: 0 };
+  if (run.status !== 'active') return none;
+  if (moves(run).length === 0 && sealedMoves(run).length === 0 && reopenable(run).length === 0) return { stranded: true, reserve: 0 };
+  const reach = reachable(run)!;
+  if (reach.has(run.heart)) return none;
+  const reopen = retriesLeft(run) > 0 ? reopenable(run) : [];
+  if (!reopen.length) return { stranded: true, reserve: 0 };
+  // A battle still in reach could pay for a retry: not stranded, nothing to keep.
+  if ([...reach].some((a) => needsBattle(run, a))) return none;
+  const reserve = Math.min(...reopen.map((s) => retryCost(run, s)));
+  return { stranded: run.biomass < reserve, reserve };
+}
+
+export const stranded = (run: RunState): boolean => wayOn(run).stranded;
 
 // ---- rewards --------------------------------------------------------------
 

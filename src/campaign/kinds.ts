@@ -13,7 +13,7 @@ export const KIND_TEXT: Record<RunNode['kind'], string> = {
   conquest: `Wipe out every rival, or hold ${pct(CONQUEST_SHARE)} of the nests for ${HOLD_S} seconds. Past ${SURGE.after / 60} minutes, the Bloom surges in, every wave bigger.`,
   domination: `Score on the key nests: only the side holding the most of them scores. Hold them all for ${KEYS.points / TICK_HZ} seconds, or more than anyone for longer. Or wipe out every rival.`,
   hold: `Dug in behind your own walls: keep your capital until the clock runs out, against the Bloom's waves. Its nests in the field feed them; sally out to take them. Every ${EVERY}, pick a boon. Lose the capital and you have ${SIEGE.retake / TICK_HZ} seconds to take it back.`,
-  finale: "The final battle: a large map, the Bloom's heart and the rivals around it. Win it to end the run.",
+  finale: "The final battle: a large map, the Bloom's heart and the rivals around it. Its Bloom nests shield it: take them all, then kill the heart to end the run.",
 };
 /** A stronghold's Conquest or Domination keeps the plain share rules (#87: no key nests, no surge). */
 export const FORT_TEXT: Partial<Record<RunNode['kind'], string>> = {

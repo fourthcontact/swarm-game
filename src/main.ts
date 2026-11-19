@@ -19,7 +19,7 @@ import { PERSONALITIES } from './sim/ai/bot';
 import { Kind, MAX_UNITS, NEUTRAL, TICK_HZ } from './sim/constants';
 import type { MatchSetup } from './sim/setup';
 import { spawnUnit } from './sim/world';
-import { mapBloom, needsBattle, newRun, resolveTurn, type RunNode, type RunState, type TurnResult } from './campaign/run';
+import { endRun, mapBloom, needsBattle, newRun, payRetry, resolveTurn, stranded, type RunNode, type RunState, type TurnResult } from './campaign/run';
 import { battleType, briefingFor, briefsSeen, markBriefSeen, resetBriefs, type BriefLord } from './campaign/briefings';
 import type { BattleReport } from './campaign/broods';
 import { battleReport, nodeSetup, warlordOf } from './campaign/battle';
@@ -31,7 +31,7 @@ import { FORTIFY } from './sim/fortify';
 import { deleteRun, finishRun, listRuns, loadHistory, saveRun } from './campaign/store';
 import { recruitPick, rewardPick, runDebrief, runHub, runMap, starterPick, type MapIntro } from './ui/campaign';
 import { runHowTo } from './ui/runtour';
-import { loadGuide, saveGuide, wantsTour } from './campaign/tour';
+import { loadGuide, saveGuide, wantsCampHint, wantsTour, type TourKind } from './campaign/tour';
 import { DemoOverlay } from './ui/demo';
 import { Hud } from './ui/hud';
 import { ScreenAwake } from './ui/wakeLock';
@@ -481,15 +481,24 @@ class App {
     this.setModal(
       runHowTo({
         back: () => this.showRunHub(),
-        replay: latest ? () => this.showRunMap(latest, null, true) : undefined,
+        replay: latest ? () => this.showRunMap(latest, null, 'map') : undefined,
         replayLabel: latest ? `Tour the map (${latest.seedText})` : undefined,
         note: latest ? undefined : 'Your first run opens with a tour of the map. Tap ? on a run\'s map to see it again.',
       }),
     );
   }
 
-  private showRunMap(run: RunState, intro: MapIntro | null = null, tour = false): void {
+  private showRunMap(run: RunState, intro: MapIntro | null = null, tour: TourKind | null = null): void {
     if (this.game) this.showMenu();
+    // Out of ways on (#253): the camp can spend the last retry's price, so check here as well as after a turn.
+    if (stranded(run)) {
+      const restored = endRun(run, 'bloom');
+      this.saveRunState(run);
+      if (!restored) return this.showRunLost(run);
+      this.sfx.checkpointRestart();
+      // The rewind moved the Bloom back: the caller's turn animation no longer fits.
+      intro = null;
+    }
     // A rescued brood waiting for a place, then a reward waiting to be picked, come first (also when resuming a run).
     if (run.recruit && run.status === 'active') {
       this.setModal(recruitPick(run, this.sfx, { save: () => saveRun(run), done: () => this.showRunMap(run, intro, tour) }));
@@ -503,10 +512,16 @@ class App {
       runMap(
         run,
         this.sfx,
-        { go: (id, fielded) => this.runMove(run, id, fielded), leave: () => this.leaveRun(run), save: () => saveRun(run), toured: () => saveGuide({ ...loadGuide(), toured: true }) },
+        {
+          go: (id, fielded) => this.runMove(run, id, fielded),
+          leave: () => this.leaveRun(run),
+          save: () => saveRun(run),
+          toured: (kind) => saveGuide({ ...loadGuide(), ...(kind === 'map' ? { toured: true } : { campHinted: true }) }),
+          checked: () => this.showRunMap(run),
+        },
         intro,
-        // A run's first turn opens with the map tour, once (#217); playtests never.
-        tour || (!run.id.startsWith(PLAYTEST) && wantsTour(run)),
+        // A run's first turn opens with the map tour, once (#217); the first return with biomass, with the camp reminder (#251). Playtests never.
+        tour ?? (run.id.startsWith(PLAYTEST) ? null : wantsTour(run) ? 'map' : wantsCampHint(run) ? 'camp' : null),
       ),
     );
     this.sfx.setBloom(mapBloom(run));
@@ -588,8 +603,13 @@ class App {
     this.startGame(nodeSetup(run, run.heart, run.broods.map((b) => b.id)), { scenario: 'campaign: finale (dev)', goal: false });
   }
 
-  /** Move to a node: fight for it, or march through a node already taken. */
+  /** Move to a node: fight for it, or march through a node already taken. A sealed node (#253) is paid for first. */
   private runMove(run: RunState, id: number, fielded: number[]): void {
+    if (run.sealed?.includes(id)) {
+      if (!payRetry(run, id)) return this.showRunMap(run);
+      this.saveRunState(run);
+      this.sfx.biomassSpent();
+    }
     if (!needsBattle(run, id)) {
       const from = run.bloom.time;
       const res = resolveTurn(run, id, null);
@@ -598,18 +618,17 @@ class App {
       this.showRunMap(run, this.runIntro(from, res));
       return;
     }
-    const node = run.nodes[id];
-    this.startGame(nodeSetup(run, id, fielded), { scenario: `campaign: ${node.kind}`, goal: false });
-    this.run = { state: run, node: id, fielded };
-    this.armRunBattle(run, id);
+    this.fightRunBattle(run, id, fielded);
   }
 
   /**
-   * What a campaign battle adds on top of its match, once it has started (and
-   * again on a restart): campaign locks, the warlord, the first-time briefing.
+   * Start a run battle: the setup comes from the node seed and the run, so a retry (#253) is the same battle.
+   * On top of the match: campaign locks, the warlord, the first-time briefing.
    */
-  private armRunBattle(run: RunState, id: number): void {
+  private fightRunBattle(run: RunState, id: number, fielded: number[]): void {
     const node = run.nodes[id];
+    this.startGame(nodeSetup(run, id, fielded), { scenario: `campaign: ${node.kind}`, goal: false });
+    this.run = { state: run, node: id, fielded };
     if (!run.unlocks.nova) this.game!.lock('nova', 'Unlock Nova at the camp');
     // A warlord's ground (#66): its sting, and its trait announced and kept on screen.
     const lord = warlordOf(run, id);
@@ -665,6 +684,18 @@ class App {
     const r = this.run;
     if (!r) return;
     this.run = null;
+    this.resolveRunBattle(r, report);
+  }
+
+  /** The run ended on the map (#253): no way on, so the Bloom takes it. */
+  private showRunLost(run: RunState): void {
+    this.sfx.defeat();
+    const none: TurnResult = { fresh: [], events: [], biomass: 0, warlords: [] };
+    this.setModal(runDebrief(run, run.nodes[run.at], false, none, { next: () => this.leaveRun(run), hub: () => this.leaveRun(run) }));
+  }
+
+  /** Settle a run battle: resolve the turn, save, and show the debrief. */
+  private resolveRunBattle(r: { state: RunState; node: number; fielded: number[] }, report: BattleReport): void {
     const from = r.state.bloom.time;
     const res = resolveTurn(r.state, r.node, report, r.fielded);
     this.saveRunState(r.state);
@@ -1855,13 +1886,10 @@ class App {
       this.setModal(
         pauseMenu({
           resume: () => this.togglePause(),
-          restart: () => {
-            const run = this.run;
+          // No Restart in a campaign battle (#253): retreat, and the loss seals the node until you pay to reopen it.
+          restart: this.run ? undefined : () => {
             if (g.mission) this.playMission(g.mission.index, 'restart');
-            else this.startGame(g.setup, { scenario: g.rec?.scenario, seat: g.human >= 0 ? g.human : undefined, goal: !run }, 'restart');
-            this.run = run;
-            // A campaign battle keeps its locks and warlord, and a briefing not yet seen shows again.
-            if (run) this.armRunBattle(run.state, run.node);
+            else this.startGame(g.setup, { scenario: g.rec?.scenario, seat: g.human >= 0 ? g.human : undefined, goal: true }, 'restart');
           },
           // Leaving a campaign battle is a retreat: it counts as a loss.
           quit: () => {

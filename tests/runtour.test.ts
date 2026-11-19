@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { BattleReport } from '../src/campaign/broods';
 import { DIFFICULTIES, MAP_H, MAP_W, moves, newRun, resolveTurn, type RunState } from '../src/campaign/run';
-import { GLOSSARY, TOUR, loadGuide, saveGuide, tourFor, tourWarlord, wantsTour } from '../src/campaign/tour';
+import { CAMP_HINT, GLOSSARY, TOUR, loadGuide, saveGuide, stepText, stepsFor, tourFor, tourWarlord, wantsCampHint, wantsTour } from '../src/campaign/tour';
 
 const WIN: BattleReport = { won: true, survivors: [30, 12, 12, 12], nests: 6, seconds: 200 };
 
@@ -27,7 +27,7 @@ describe('map tour (#217)', () => {
         const sel = s.select?.(run);
         if (sel !== undefined && sel !== null) expect(run.nodes[sel]).toBeDefined();
         for (const id of s.peek?.(run) ?? []) expect(run.nodes[id]).toBeDefined();
-        expect(s.text.length).toBeGreaterThan(20);
+        expect(stepText(s, run).length).toBeGreaterThan(20);
       }
     }
   });
@@ -69,10 +69,10 @@ describe('tour seen (#217)', () => {
       const run = newRun('seen', 0, 'swarm', 0);
       expect(loadGuide().toured).toBe(false);
       expect(wantsTour(run)).toBe(true);
-      saveGuide({ toured: true });
+      saveGuide({ toured: true, campHinted: false });
       expect(loadGuide().toured).toBe(true);
       expect(wantsTour(run)).toBe(false);
-      saveGuide({ toured: false });
+      saveGuide({ toured: false, campHinted: false });
       resolveTurn(run, moves(run)[0], WIN, run.fielded, 0);
       expect(wantsTour(run)).toBe(false);
       mem.set('swarm.runGuide', '{not json');
@@ -80,5 +80,61 @@ describe('tour seen (#217)', () => {
     } finally {
       delete (globalThis as { localStorage?: unknown }).localStorage;
     }
+  });
+});
+
+describe('camp reminder (#251)', () => {
+  const withStorage = (f: (mem: Map<string, string>) => void) => {
+    const mem = new Map<string, string>();
+    (globalThis as { localStorage?: unknown }).localStorage = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v) };
+    try {
+      f(mem);
+    } finally {
+      delete (globalThis as { localStorage?: unknown }).localStorage;
+    }
+  };
+
+  it('waits for the first return to the map with biomass, then shows once', () =>
+    withStorage(() => {
+      const run = newRun('camp-hint', 0, 'swarm', 0);
+      expect(wantsCampHint(run)).toBe(false); // turn 0: the main tour's turn
+      resolveTurn(run, moves(run)[0], WIN, run.fielded, 0);
+      expect(run.biomass).toBeGreaterThan(0);
+      expect(wantsCampHint(run)).toBe(true);
+      // Skipping the main tour doesn't skip the reminder.
+      saveGuide({ toured: true, campHinted: false });
+      expect(wantsCampHint(run)).toBe(true);
+      saveGuide({ toured: true, campHinted: true });
+      expect(wantsCampHint(run)).toBe(false);
+      saveGuide({ toured: false, campHinted: false });
+      run.biomass = 0;
+      expect(wantsCampHint(run)).toBe(false);
+    }));
+
+  it('an older save without the flag still loads, and keeps toured', () =>
+    withStorage((mem) => {
+      mem.set('swarm.runGuide', JSON.stringify({ toured: true }));
+      expect(loadGuide()).toEqual({ toured: true, campHinted: false });
+    }));
+
+  it('quotes the run’s live numbers', () => {
+    const run = newRun('camp-numbers', 0, 'swarm', 0);
+    resolveTurn(run, moves(run)[0], WIN, run.fielded, 0);
+    run.biomass = 87;
+    run.broods[0].wounded = 3;
+    const [earned, heal, unlocks] = CAMP_HINT.map((s) => stepText(s, run));
+    expect(earned).toContain('87 biomass');
+    expect(heal).toContain('One of your broods is wounded');
+    expect(unlocks).toMatch(/nest type costs \d+ now/);
+    expect(stepsFor('camp', run)).toBe(CAMP_HINT);
+    expect(stepsFor('map', run).map((s) => s.id)).toEqual(tourFor(run).map((s) => s.id));
+    for (const s of CAMP_HINT) {
+      const f = s.focus(run);
+      expect(finite(f.x, f.y)).toBe(true);
+    }
+    // Every nest and Nova unlocked: no prices left to quote for them.
+    run.unlocks = { nests: ~0, nova: true };
+    expect(stepText(CAMP_HINT[2], run)).toContain('Every nest type is unlocked');
+    expect(stepText(CAMP_HINT[2], run)).not.toContain('Nova');
   });
 });

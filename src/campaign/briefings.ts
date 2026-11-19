@@ -143,7 +143,7 @@ function finale(w: World): Step[] {
       focus: (c) => ({ x: c.w.heart!.x, y: c.w.heart!.y, zoom: 1.6 }),
       spotlight: '.heartbar',
     }),
-    tour('Its Bloom nests (ringed) ward it: each one still standing cuts the damage it takes. Take them first, then strike.', {
+    tour('<b>Its Bloom nests (ringed) shield it.</b> While any of them stands, the heart takes no damage at all. Take every one, then strike.', {
       highlight: () => nests,
       focus: () => null,
     }),

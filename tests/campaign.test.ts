@@ -201,14 +201,14 @@ describe('run difficulty', () => {
     }
   });
 
-  it('the Bloom is no faster on easier runs (Standard keeps Gentle\'s pace, Brutal Hard\'s), and Gentle holds it still after a loss', () => {
+  it('the Bloom is no faster on easier runs (Standard keeps Gentle\'s pace, Brutal Hard\'s), and Gentle slows it to half a turn after a loss (#253)', () => {
     const [gentleStep, standardStep, hardStep, brutalStep] = DIFFICULTIES.map((d) => newRun('pace', 0, 'swarm', 0, d).bloom.step);
     expect(standardStep).toBe(gentleStep);
     expect(hardStep).toBeGreaterThan(standardStep);
     expect(brutalStep).toBe(hardStep);
     const gentle = newRun('pace', 0, 'swarm', 0, 'gentle');
     resolveTurn(gentle, moves(gentle)[0], LOSS, gentle.fielded, 0);
-    expect(gentle.bloom.time).toBe(0);
+    expect(gentle.bloom.time).toBe(0.5);
     const standard = newRun('pace', 0, 'swarm', 0, 'standard');
     resolveTurn(standard, moves(standard)[0], LOSS, standard.fielded, 0);
     expect(standard.bloom.time).toBe(1);
@@ -627,6 +627,29 @@ describe('saves', () => {
     expect(inBloom(back.bloom, 250, MAP_H / 2)).toBe(true);
     resolveTurn(back, moves(back)[0], WIN, back.fielded, 0);
     expect(back.bloom.seeds.length).toBe(1);
+    delete (globalThis as { localStorage?: unknown }).localStorage;
+  });
+
+  it("a run saved by an older build fights today's finale rivals (#252)", async () => {
+    const mem = new Map<string, string>();
+    const ls = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v), removeItem: (k: string) => void mem.delete(k), key: (i: number) => [...mem.keys()][i] ?? null, get length() { return mem.size; } };
+    (globalThis as { localStorage?: unknown }).localStorage = ls;
+    const { loadRun, saveRun } = await import('../src/campaign/store');
+    for (const d of DIFFICULTIES) {
+      const old = newRun(`old-${d}`, 0, 'swarm', 0, d);
+      delete old.finaleRules;
+      const fin = old.nodes.find((n) => n.kind === 'finale')!;
+      // Before #252 the finale was a level lower, and Hard's had three rivals.
+      Object.assign(fin, { rivals: 3, difficulty: 2 });
+      saveRun(old);
+      const back = loadRun(old.id)!.nodes.find((n) => n.kind === 'finale')!;
+      expect({ rivals: back.rivals, difficulty: back.difficulty }).toEqual(RUN_DIFFICULTY[d].finale);
+    }
+    // Only once: a run already on today's finale rules keeps its finale node as saved.
+    const now = newRun('now', 0, 'swarm', 0);
+    Object.assign(now.nodes.find((n) => n.kind === 'finale')!, { rivals: 1 });
+    saveRun(now);
+    expect(loadRun(now.id)!.nodes.find((n) => n.kind === 'finale')!.rivals).toBe(1);
     delete (globalThis as { localStorage?: unknown }).localStorage;
   });
 });

@@ -27,7 +27,7 @@ One seed generates everything: map, battles and reward offers. The run is determ
   - It waits in a band off the edge behind your start. Every node you leave starts it growing there, a turn later and a set distance each turn. So it spreads from where you came, whichever direction you went: an up-or-down route is as safe as one heading straight for the heart.
   - It's one body, not a cluster of circles: its parts fuse together, and its whole edge swells toward your trail, less the further away it is.
   - It swallows every node it reaches, so in time it eats the nodes you skipped.
-  - Winning keeps you ahead. A lost battle leaves you in place while it closes in.
+  - Winning keeps you ahead. A lost battle leaves you in place while it closes in. On Gentle it advances only half a turn after a loss (#253).
   - The map shows a dashed outline of where it will reach next turn.
   - Swallowed nodes become Bloom territory and add to its strength.
   - Its speed is set per run: the fastest Bloom the shortest route survives when every hop takes 1 / pace turns, so the easier the run, the more room for lost battles.
@@ -175,15 +175,17 @@ Persistent named squads, each of one unit kind: Swarmers, Shields, Spears or Rai
   - Strains also tie into routing: Spears need a Spire on the map, and previews show each map's nest mix.
 - **Size from survivors:** after a battle, a brood's size is set by how many of its dots survived, up to a cap. Veterancy rises with wins.
 - **Losing a battle** wounds the fielded broods (they sit out one battle). A brood that ends a battle with almost no survivors dies.
+- **Fighting a lost battle again** (#253): a lost battle is a whole turn (wounds, salvage, the Bloom), and it seals its node: a padlock on the map. Only biomass opens it again, from the node's card while you stand next to it. A run has a few retries by difficulty (Gentle 3, Standard 2, Hard 1, Brutal 0). A retry costs half the node's reward (at least 10), and half again for each retry of the same battle, however long ago. The finale pays no reward, so its retry is priced off the map's richest node. A campaign battle has no Restart in the pause menu: retreating is a loss like any other. A checkpoint restore doesn't give retries back.
 - **New broods** come from rescue rewards, often in warlord domains.
-- **The run ends** when you have no broods left to field, unless the checkpoint saves you.
+- **The run ends** when you have no broods left to field, or no way on: the heart is out of reach, and no sealed node in reach can be reopened, with the biomass you have or could still earn in a battle in reach (#253). The map checks this too, and so does closing the camp, since spending can leave you short of a retry's price. The camp warns you first. The checkpoint saves you once.
 
 ## Biomass and the camp
 Biomass is earned per battle: nests held at the end, survivors, and speed. You spend it at a short camp screen between turns:
 - heal a wounded brood;
 - grow a brood's size cap;
 - unlock a nest type or a power for the run (you start with Hive, plus Surge);
-- reroll a reward offer.
+- reroll a reward offer;
+- fight a lost battle again (see Broods).
 
 ## Rewards
 After every won node, **pick 1 of 3** offers.
@@ -211,7 +213,7 @@ After every won node, **pick 1 of 3** offers.
 
 ## Finale: the Bloom's heart
 - **Map:** a large map overrun by the Bloom, with its swarms at full pressure. The heart, a rooted boss (`src/sim/heart.ts`), sits near the centre.
-- **Bloom nests:** the 2–4 neutral nests nearest the heart. While the Bloom holds them, they release swarms and **ward** the heart: each one cuts the damage it takes by 15%. Take them first.
+- **Bloom nests:** the 2–4 neutral nests nearest the heart that can be walked to from it. While the Bloom holds them, they release swarms and **shield** the heart: while any one of them stands, it takes no damage at all (#252). Take them all, then strike. Units don't fire at a shielded heart on their own, so they pass it by on the way to the wards. A ward once taken stays down, even if it goes wild again.
 - **The heart fights back:**
   - a **pulse:** a telegraphed shockwave (pull back during the wind-up);
   - **spore lobs** at the thickest crowd;
@@ -221,6 +223,7 @@ After every won node, **pick 1 of 3** offers.
 - **Strength:** the nodes the Bloom ate add health to the heart (6% each), more Bloom nests, and bigger swarms.
 - **Winning:** on Gentle, Standard and Hard, your killing blow wins. If a rival lands it, the battle goes on as a normal one. On Brutal, the heart's death only opens the fight: the rivals must be beaten too. Losing all your units and nests still loses.
 - The `?heart=N` dev link jumps straight into a finale, with the Bloom fed by N nodes.
+- **Rivals:** one bot level above the run's hardest regular node, at most Brutal (#252). Every difficulty's finale fields two Brutal bots, so it's the hardest battle of the run. Runs saved by older builds get these rivals when they load.
 - **Warlords:** any still alive whose domain borders the heart join as rivals. They suffer the Bloom too.
 
 ## Sound and music

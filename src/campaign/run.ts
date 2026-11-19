@@ -238,8 +238,8 @@ export interface RunState {
   log: { turn: number; node: number; won: boolean }[];
   /** lost battles reopened so far (#253) */
   retried?: number;
-  /** the battle being fought again, and how many times: each retry of it costs more */
-  retrying?: { node: number; tries: number };
+  /** retries paid per node (keys: node ids), so each retry of the same battle costs more; cleared when you win there */
+  tries?: Record<string, number>;
   /** nodes you lost a battle at (#253): sealed until you pay to fight there again */
   sealed?: number[];
 }
@@ -659,7 +659,7 @@ export function resolveTurn(run: RunState, id: number, report: BattleReport | nu
     run.sealed = [...(run.sealed ?? []).filter((n) => n !== id), id];
   } else if (report && won) {
     run.sealed = (run.sealed ?? []).filter((n) => n !== id);
-    run.retrying = undefined;
+    if (run.tries) delete run.tries[id];
   }
   if (won) {
     if (report && node.rescue !== undefined) {
@@ -736,7 +736,7 @@ function restoreCheckpoint(run: RunState, now: number): void {
   const saved = JSON.parse(run.checkpointSave!) as RunState;
   const log = run.log;
   // Retries are run-wide (#253): rewinding to the checkpoint doesn't give them back.
-  Object.assign(run, saved, { log, retried: run.retried, retrying: undefined, checkpointSave: undefined, checkpointUsed: true, updated: now, status: 'active', lostTo: undefined, offer: undefined, recruit: undefined });
+  Object.assign(run, saved, { log, retried: run.retried, tries: run.tries, checkpointSave: undefined, checkpointUsed: true, updated: now, status: 'active', lostTo: undefined, offer: undefined, recruit: undefined });
 }
 
 // ---- camp -----------------------------------------------------------------
@@ -779,14 +779,18 @@ export function unlock(run: RunState, u: Unlock): boolean {
 // heart out of reach and no retry you can pay for, or earn the price of, the
 // Bloom takes the run.
 
-/** A retry costs half the node's reward (at least min), and half again for each retry of the same battle. */
+/**
+ * A retry costs half the node's reward (at least min), and half again for each retry of the same battle.
+ * The finale pays no reward: its retry is priced off the map's richest node.
+ */
 export const RETRY = { share: 0.5, min: 10, rise: 0.5 };
 
 export const retriesLeft = (run: RunState): number => Math.max(0, RUN_DIFFICULTY[difficultyOf(run)].retries - (run.retried ?? 0));
 
 export function retryCost(run: RunState, id: number): number {
-  const tries = run.retrying?.node === id ? run.retrying.tries : 0;
-  return Math.round(Math.max(RETRY.min, run.nodes[id].reward * RETRY.share) * (1 + RETRY.rise * tries));
+  const tries = run.tries?.[id] ?? 0;
+  const reward = id === run.heart ? Math.max(...run.nodes.map((n) => n.reward)) : run.nodes[id].reward;
+  return Math.round(Math.max(RETRY.min, reward * RETRY.share) * (1 + RETRY.rise * tries));
 }
 
 /** Sealed nodes you could step onto from where you stand, if you paid. */
@@ -801,27 +805,40 @@ export function payRetry(run: RunState, id: number): boolean {
   if (!canRetry(run, id)) return false;
   run.biomass -= retryCost(run, id);
   run.retried = (run.retried ?? 0) + 1;
-  run.retrying = { node: id, tries: (run.retrying?.node === id ? run.retrying.tries : 0) + 1 };
+  run.tries = { ...run.tries, [id]: (run.tries?.[id] ?? 0) + 1 };
   run.sealed = run.sealed!.filter((n) => n !== id);
   return true;
 }
 
-/**
- * No way on (#253): the heart is out of reach, and no sealed node in reach can
- * be reopened, now or with biomass from a battle you can still fight.
- */
-export function stranded(run: RunState): boolean {
-  if (run.status !== 'active') return false;
-  if (moves(run).length === 0 && sealedMoves(run).length === 0) return true;
-  const reach = reachable(run)!;
-  if (reach.has(run.heart)) return false;
-  if (retriesLeft(run) === 0) return true;
-  const reopen = (run.sealed ?? []).filter((s) => [...reach].some((a) => run.nodes[a].links.includes(s) && canStep(run, a, s, true)));
-  if (!reopen.length) return true;
-  if (reopen.some((s) => run.biomass >= retryCost(run, s))) return false;
-  // A battle still in reach could pay for it.
-  return ![...reach].some((a) => needsBattle(run, a));
+/** Sealed nodes a step from anywhere you can still reach: ones a retry could open. */
+export function reopenable(run: RunState): number[] {
+  const reach = reachable(run);
+  if (!reach) return [];
+  return (run.sealed ?? []).filter((s) => [...reach].some((a) => run.nodes[a].links.includes(s) && canStep(run, a, s, true)));
 }
+
+/**
+ * Where the run stands for a way on (#253). `stranded`: the heart is out of
+ * reach, and no sealed node in reach can be reopened, now or with biomass from
+ * a battle you can still fight. `reserve`: while a retry is the only way on and
+ * nothing in reach could pay for it, the biomass to keep for the cheapest one
+ * (spending below it strands the run); else 0.
+ */
+export function wayOn(run: RunState): { stranded: boolean; reserve: number } {
+  const none = { stranded: false, reserve: 0 };
+  if (run.status !== 'active') return none;
+  if (moves(run).length === 0 && sealedMoves(run).length === 0 && reopenable(run).length === 0) return { stranded: true, reserve: 0 };
+  const reach = reachable(run)!;
+  if (reach.has(run.heart)) return none;
+  const reopen = retriesLeft(run) > 0 ? reopenable(run) : [];
+  if (!reopen.length) return { stranded: true, reserve: 0 };
+  // A battle still in reach could pay for a retry: not stranded, nothing to keep.
+  if ([...reach].some((a) => needsBattle(run, a))) return none;
+  const reserve = Math.min(...reopen.map((s) => retryCost(run, s)));
+  return { stranded: run.biomass < reserve, reserve };
+}
+
+export const stranded = (run: RunState): boolean => wayOn(run).stranded;
 
 // ---- rewards --------------------------------------------------------------
 

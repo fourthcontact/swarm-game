@@ -26,6 +26,8 @@ import {
   retriesLeft,
   retryCost,
   sealedMoves,
+  stranded,
+  wayOn,
   needsBattle,
   rerollCost,
   rerollOffer,
@@ -406,7 +408,8 @@ function drawMap(
       if (l < n.id || !known.has(l)) continue;
       const fromHere = (n.id === run.at && open.has(l)) || (l === run.at && open.has(n.id));
       const dead = isSwallowed(n.id) || isSwallowed(l);
-      const live = !reach || (reach.has(n.id) && canStep(run, n.id, l)) || (reach.has(l) && canStep(run, l, n.id));
+      // A sealed node you could pay to reopen (#253) keeps its link lit.
+      const live = !reach || (reach.has(n.id) && canStep(run, n.id, l, true)) || (reach.has(l) && canStep(run, l, n.id, true));
       const gone = !fromHere && !dead && !live;
       g.strokeStyle = fromHere ? me : dead ? 'rgba(160, 70, 140, 0.25)' : gone ? 'rgba(110, 118, 150, 0.12)' : 'rgba(150, 170, 255, 0.28)';
       g.lineWidth = (fromHere ? 2.5 : gone ? 1 : 1.5) * u;
@@ -694,7 +697,7 @@ function campModal(run: RunState, sfx: AudioEngine, h: { save: () => void; close
   // Cornered (#253): a retry is the only way on, so spending its price ends the run.
   const warn = m.querySelector('.camp-warn') as HTMLElement;
   const warnReserve = () => {
-    const keep = reserveFor(run);
+    const keep = wayOn(run).reserve;
     warn.hidden = keep === 0;
     warn.innerHTML = keep ? `🔒 Your only way on is a sealed battle. Keep <b>${keep} biomass</b> to fight it again: below that, the Bloom takes your swarm.` : '';
   };
@@ -959,7 +962,7 @@ export interface MapIntro {
 export function runMap(
   run: RunState,
   sfx: AudioEngine,
-  h: { go: (id: number, fielded: number[]) => void; leave: () => void; save: () => void; toured?: () => void },
+  h: { go: (id: number, fielded: number[]) => void; leave: () => void; save: () => void; toured?: () => void; checked?: () => void },
   intro: MapIntro | null = null,
   /** open with the map tour (#217) */
   tour = false,
@@ -1002,6 +1005,8 @@ export function runMap(
   const closeCamp = () => {
     campEl?.remove();
     campEl = null;
+    // Spending at the camp can leave no way on (#253): let the app end the run.
+    if (stranded(run)) h.checked?.();
   };
   const camp = (tab: CampTab = 'broods', quiet = false) => {
     close();
@@ -1448,7 +1453,7 @@ export function runDebrief(run: RunState, node: RunNode, won: boolean, res: Turn
       ? `The Bloom's heart is destroyed. ${run.turn} turns, ${run.biomass} biomass gathered.`
       : run.status === 'lost'
         ? run.lostTo === 'bloom'
-          ? run.sealed?.length
+          ? run.sealed?.some((n) => !run.swallowed.includes(n))
             ? 'No way on: the heart is out of reach, and no lost battle can be fought again. The Bloom consumes your swarm.'
             : 'The Bloom closed every route. Your swarm is consumed.'
           : 'Your last brood is gone.'
@@ -1482,17 +1487,6 @@ export function runDebrief(run: RunState, node: RunNode, won: boolean, res: Turn
   m.querySelector('[data-a=next]')?.addEventListener('click', h.next);
   m.querySelector('[data-a=hub]')?.addEventListener('click', h.hub);
   return m;
-}
-
-/**
- * Biomass to keep for the cheapest retry, when one is the only way on (#253):
- * the heart is out of reach without it, and no battle in reach could pay. Else 0.
- */
-export function reserveFor(run: RunState): number {
-  const reach = reachable(run);
-  if (!reach || reach.has(run.heart) || retriesLeft(run) === 0 || [...reach].some((a) => needsBattle(run, a))) return 0;
-  const costs = sealedMoves(run).map((id) => retryCost(run, id));
-  return costs.length ? Math.min(...costs) : 0;
 }
 
 /** What it takes to fight at a lost battle's node again (#253). */

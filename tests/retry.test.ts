@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BattleReport } from '../src/campaign/broods';
-import { RETRY, RUN_DIFFICULTY, canRetry, canStep, moves, newRun, payRetry, reachable, resolveTurn, retriesLeft, retryCost, sealedMoves, stranded, type RunState } from '../src/campaign/run';
+import { RETRY, RUN_DIFFICULTY, canRetry, canStep, moves, newRun, payRetry, reachable, resolveTurn, retriesLeft, retryCost, sealedMoves, stranded, wayOn, type RunState } from '../src/campaign/run';
 
 const LOSS: BattleReport = { won: false, survivors: [3, 0, 0, 0], nests: 1, seconds: 240 };
 const WIN: BattleReport = { won: true, survivors: [30, 12, 12, 12], nests: 6, seconds: 200 };
@@ -41,9 +41,9 @@ describe('fighting a lost battle again (#253)', () => {
     expect(payRetry(run, id)).toBe(true);
     expect(run.sealed).toEqual([]);
     expect(moves(run)).toContain(id);
-    expect(run.retrying).toEqual({ node: id, tries: 1 });
+    expect(run.tries).toEqual({ [id]: 1 });
     resolveTurn(run, id, WIN, run.fielded, 0);
-    expect(run.retrying).toBeUndefined();
+    expect(run.tries).toEqual({});
     expect(run.retried).toBe(1);
   });
 
@@ -77,6 +77,60 @@ describe('fighting a lost battle again (#253)', () => {
     expect(retryCost(run, id)).toBe(Math.round(base * (1 + RETRY.rise)));
     // Another battle starts at the base price.
     expect(retryCost(run, other)).toBe(Math.round(Math.max(RETRY.min, run.nodes[other].reward * RETRY.share)));
+  });
+
+  it("a battle's rising price is its own: a win or a retry elsewhere doesn't reset it", () => {
+    const run = rich('gentle');
+    const [a, b] = moves(run);
+    const raw = Math.max(RETRY.min, run.nodes[a].reward * RETRY.share);
+    lose(run, a);
+    payRetry(run, a);
+    lose(run, a);
+    // A retry elsewhere, then a win there.
+    lose(run, b);
+    payRetry(run, b);
+    resolveTurn(run, b, WIN, run.fielded, 0);
+    expect(retryCost(run, a)).toBe(Math.round(raw * (1 + RETRY.rise)));
+  });
+
+  it("the finale's retry is priced off the map's richest node, not its own zero reward", () => {
+    const run = rich();
+    const top = Math.max(...run.nodes.map((n) => n.reward));
+    expect(run.nodes[run.heart].reward).toBe(0);
+    expect(retryCost(run, run.heart)).toBe(Math.round(Math.max(RETRY.min, top * RETRY.share)));
+  });
+
+  it('cornered behind a sealed node, the reserve is the cheapest retry, and spending below it strands the run', () => {
+    const run = rich();
+    run.sealed = moves(run).filter((n) => !run.visited.includes(n));
+    const keep = Math.min(...run.sealed.map((n) => retryCost(run, n)));
+    expect(wayOn(run)).toEqual({ stranded: false, reserve: keep });
+    run.biomass = keep - 1;
+    expect(wayOn(run)).toEqual({ stranded: true, reserve: keep });
+    // With the heart in reach, there's nothing to keep.
+    expect(wayOn(rich())).toEqual({ stranded: false, reserve: 0 });
+  });
+
+  it('a sealed node a step from an earlier node, not this one, still counts as a way on', () => {
+    // A map where the start has a neighbour the next node doesn't.
+    const fits = (seed: number) => {
+      const r = newRun(`retry-back-${seed}`, 0, 'swarm', 0);
+      const nx = moves(r)[0];
+      return r.nodes[r.at].links.some((l) => l !== nx && !r.nodes[nx].links.includes(l) && l !== r.heart);
+    };
+    const seed = Array.from({ length: 50 }, (_, k) => k).find(fits)!;
+    expect(seed).toBeDefined();
+    const run = newRun(`retry-back-${seed}`, 0, 'swarm', 0);
+    run.biomass = 1000;
+    const start = run.at;
+    const next = moves(run)[0];
+    resolveTurn(run, next, WIN, run.fielded, 0);
+    // Back at the start, one battle we lost; everything else ahead is gone to the Bloom.
+    const back = run.nodes[start].links.find((l) => l !== next && !run.nodes[next].links.includes(l) && l !== run.heart)!;
+    run.sealed = [back];
+    run.swallowed = run.nodes.filter((n) => n.id !== back && n.id !== start && n.id !== next && n.id !== run.heart).map((n) => n.id);
+    expect(sealedMoves(run)).toEqual([]);
+    expect(wayOn(run)).toEqual({ stranded: false, reserve: retryCost(run, back) });
   });
 
   it("can't be paid for without the biomass, or for a node that isn't sealed, and changes nothing then", () => {
@@ -120,7 +174,7 @@ describe('fighting a lost battle again (#253)', () => {
     const id = moves(run)[0];
     lose(run, id);
     delete run.retried;
-    delete run.retrying;
+    delete run.tries;
     expect(retriesLeft(run)).toBe(1);
     expect(canRetry(run, id)).toBe(true);
   });

@@ -496,6 +496,8 @@ class App {
       this.saveRunState(run);
       if (!restored) return this.showRunLost(run);
       this.sfx.checkpointRestart();
+      // The rewind moved the Bloom back: the caller's turn animation no longer fits.
+      intro = null;
     }
     // A rescued brood waiting for a place, then a reward waiting to be picked, come first (also when resuming a run).
     if (run.recruit && run.status === 'active') {
@@ -510,7 +512,13 @@ class App {
       runMap(
         run,
         this.sfx,
-        { go: (id, fielded) => this.runMove(run, id, fielded), leave: () => this.leaveRun(run), save: () => saveRun(run), toured: () => saveGuide({ ...loadGuide(), toured: true }) },
+        {
+          go: (id, fielded) => this.runMove(run, id, fielded),
+          leave: () => this.leaveRun(run),
+          save: () => saveRun(run),
+          toured: () => saveGuide({ ...loadGuide(), toured: true }),
+          checked: () => this.showRunMap(run),
+        },
         intro,
         // A run's first turn opens with the map tour, once (#217); playtests never.
         tour || (!run.id.startsWith(PLAYTEST) && wantsTour(run)),
@@ -613,20 +621,14 @@ class App {
     this.fightRunBattle(run, id, fielded);
   }
 
-  /** Start a run battle: the setup comes from the node seed and the run, so a retry (#253) is the same battle. */
+  /**
+   * Start a run battle: the setup comes from the node seed and the run, so a retry (#253) is the same battle.
+   * On top of the match: campaign locks, the warlord, the first-time briefing.
+   */
   private fightRunBattle(run: RunState, id: number, fielded: number[]): void {
     const node = run.nodes[id];
     this.startGame(nodeSetup(run, id, fielded), { scenario: `campaign: ${node.kind}`, goal: false });
     this.run = { state: run, node: id, fielded };
-    this.armRunBattle(run, id);
-  }
-
-  /**
-   * What a campaign battle adds on top of its match, once it has started (and
-   * again on a restart): campaign locks, the warlord, the first-time briefing.
-   */
-  private armRunBattle(run: RunState, id: number): void {
-    const node = run.nodes[id];
     if (!run.unlocks.nova) this.game!.lock('nova', 'Unlock Nova at the camp');
     // A warlord's ground (#66): its sting, and its trait announced and kept on screen.
     const lord = warlordOf(run, id);

@@ -27,7 +27,7 @@ One seed generates everything: map, battles and reward offers. The run is determ
   - It waits in a band off the edge behind your start. Every node you leave starts it growing there, a turn later and a set distance each turn. So it spreads from where you came, whichever direction you went: an up-or-down route is as safe as one heading straight for the heart.
   - It's one body, not a cluster of circles: its parts fuse together, and its whole edge swells toward your trail, less the further away it is.
   - It swallows every node it reaches, so in time it eats the nodes you skipped.
-  - Winning keeps you ahead. A lost battle leaves you in place while it closes in.
+  - Winning keeps you ahead. A lost battle leaves you in place while it closes in. On Gentle it advances only half a turn after a loss (#253).
   - The map shows a dashed outline of where it will reach next turn.
   - Swallowed nodes become Bloom territory and add to its strength.
   - Its speed is set per run: the fastest Bloom the shortest route survives when every hop takes 1 / pace turns, so the easier the run, the more room for lost battles.
@@ -175,9 +175,9 @@ Persistent named squads, each of one unit kind: Swarmers, Shields, Spears or Rai
   - Strains also tie into routing: Spears need a Spire on the map, and previews show each map's nest mix.
 - **Size from survivors:** after a battle, a brood's size is set by how many of its dots survived, up to a cap. Veterancy rises with wins.
 - **Losing a battle** wounds the fielded broods (they sit out one battle). A brood that ends a battle with almost no survivors dies.
-- **Fighting a lost battle again** (#253): before a loss is applied, you can pay biomass to fight the same battle again from the start. A run has a few retries by difficulty (Gentle 3, Standard 2, Hard 1, Brutal 0). A retry costs half the node's reward (at least 10), and half again for each retry of the same battle. The pending loss is saved before the choice, so leaving the page doesn't skip it. Restart in the pause menu is a retry too, at the same price. A checkpoint restore doesn't give retries back.
+- **Fighting a lost battle again** (#253): a lost battle is a whole turn (wounds, salvage, the Bloom), and it seals its node: a padlock on the map. Only biomass opens it again, from the node's card while you stand next to it. A run has a few retries by difficulty (Gentle 3, Standard 2, Hard 1, Brutal 0). A retry costs half the node's reward (at least 10), and half again for each retry of the same battle. A campaign battle has no Restart in the pause menu: retreating is a loss like any other. A checkpoint restore doesn't give retries back.
 - **New broods** come from rescue rewards, often in warlord domains.
-- **The run ends** when you have no broods left to field, unless the checkpoint saves you.
+- **The run ends** when you have no broods left to field, or no way on: the heart is out of reach, and no sealed node in reach can be reopened, with the biomass you have or could still earn in a battle in reach (#253). The map checks this too, since the camp can spend a retry's price. The checkpoint saves you once.
 
 ## Biomass and the camp
 Biomass is earned per battle: nests held at the end, survivors, and speed. You spend it at a short camp screen between turns:

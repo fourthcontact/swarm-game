@@ -7,7 +7,7 @@
 import { nodeSetup } from '../../src/campaign/battle';
 import { COST, KIND_NEST, MIN_SIZE, UNLOCKS, fit, type PackId, type Unlock } from '../../src/campaign/broods';
 import { REWARD, STRAIN_SLOTS, TIER_WEIGHT } from '../../src/campaign/rewards';
-import { type RunDifficulty, bloomStrength, grow, heal, hops, maxFielded, moves, needsBattle, newRun, pressure, resolveTurn, skipRecruit, takeRecruit, takeReward, unlock, unlockCost, unlocked, warlordFighting, type RunState } from '../../src/campaign/run';
+import { type RunDifficulty, bloomStrength, canRetry, endRun, grow, heal, hops, maxFielded, moves, needsBattle, newRun, payRetry, pressure, resolveTurn, sealedMoves, stranded, skipRecruit, takeRecruit, takeReward, unlock, unlockCost, unlocked, warlordFighting, type RunState } from '../../src/campaign/run';
 import type { ProxyKnobs } from '../../src/proxy/proxy';
 import { CAP, classOf, type BattleClass, type Fight, type Result } from './battle';
 import type { Pool } from './pool';
@@ -112,16 +112,21 @@ export function pickBroods(run: RunState): number[] {
     .map((b) => b.id);
 }
 
-/** Next node: one step along the shortest open route to the heart; ties go to easier, then rescue, nodes. */
+/**
+ * Next node: one step along the shortest open route to the heart; ties go to easier, then rescue, nodes.
+ * A sealed node (#253) on a shorter route is paid for and fought again, when it can be.
+ */
 export function pickMove(run: RunState): number {
   const back = hops(run.nodes, run.heart, (id) => run.swallowed.includes(id));
-  const options = moves(run);
+  const options = [...moves(run), ...sealedMoves(run).filter((id) => canRetry(run, id))];
   const rank = (id: number) => {
     const n = run.nodes[id];
     const d = back[id] < 0 ? 999 : back[id];
     return d * 100 + (needsBattle(run, id) ? n.difficulty * 10 + n.rivals : -5) - (n.rescue !== undefined ? 3 : 0) - (n.checkpoint ? 2 : 0);
   };
-  return options.reduce((a, b) => (rank(b) < rank(a) ? b : a));
+  const id = options.reduce((a, b) => (rank(b) < rank(a) ? b : a));
+  if (run.sealed?.includes(id)) payRetry(run, id);
+  return id;
 }
 
 /** A rescued brood waiting with the roster full (#134): swap out the smallest brood if it's smaller, else let it go. */
@@ -189,6 +194,8 @@ export async function playRun(fight: Fight | Pool, seed: number, o: RunOptions):
     run.offer = undefined;
     if (run.turn > 0) out.camps.push({ t: Math.min(1, run.nodes[run.at].depth / out.far), banked: run.biomass, all: run.biomass >= wishCost(run) });
     spend(run, out.bought);
+    // Spending can leave no way on (#253): the run ends as it would on the map.
+    if (stranded(run) && (endRun(run, 'bloom', 0), run.status !== 'active')) break;
     if (out.allNests === undefined && UNLOCKS.every((u) => unlocked(run, u))) out.allNests = out.battles.filter((b) => b.won).length;
     const id = pickMove(run);
     const node = run.nodes[id];

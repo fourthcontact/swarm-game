@@ -1231,7 +1231,12 @@ canvas.creature { display: block; }
   width: min(760px, 100%); max-height: 100%; display: grid; grid-template-columns: 132px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr);
   gap: 12px 16px; padding: 18px 20px;
 }
-.camp-card header { grid-column: 1 / -1; display: flex; align-items: center; gap: 14px; }
+.camp-card header { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+/* Cornered (#253): keep a retry's price. */
+.camp-warn { flex-basis: 100%; margin: 0; padding: 8px 10px; border: 1px solid rgba(224, 160, 64, 0.5); border-radius: 8px; background: rgba(224, 160, 64, 0.1); color: #f0c070; font-size: 13px; line-height: 1.4; }
+.camp-warn[hidden] { display: none; }
+/* A lost battle's debrief (#253): what reopening it costs. */
+.run-debrief .retry-note { padding: 8px 10px; border: 1px solid rgba(224, 160, 64, 0.5); border-radius: 8px; background: rgba(224, 160, 64, 0.1); color: #f0c070; font-size: 14px; line-height: 1.45; }
 .camp-card header h3 { margin: 0; font-size: 15px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); }
 .camp-biomass { position: relative; margin-left: auto; color: var(--muted); font-size: 14px; }
 .camp-biomass b { color: #b4ff39; font-size: 20px; font-variant-numeric: tabular-nums; }

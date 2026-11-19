@@ -17,8 +17,6 @@ export const HEART = {
   hpPerStrength: 0.06,
   /** drawn size (the sim uses the Colossus's reach) */
   size: 30,
-  /** damage taken drops by this much per standing Bloom nest */
-  ward: 0.15,
   /** Bloom nests: 2, plus one per this many swallowed nodes, at most 4 */
   nestsPer: 4,
   nestsMax: 4,
@@ -72,12 +70,19 @@ export function initHeart(w: World, strength: number, rule: HeartRule, wound = 0
   // Only the heart launches Bloom-owned strikes.
   w.factions[NEUTRAL].mods = { ...w.factions[NEUTRAL].mods, barrageBudget: HEART.lobBudget };
   const count = Math.min(HEART.nestsMax, 2 + Math.floor(strength / HEART.nestsPer));
-  const nests = w.nests
+  // Only nests you can walk to from the heart can be wards: with the ward gate
+  // (#252) one you can't reach would leave the heart unhurtable. Mapgen keeps
+  // every nest connected, so this is a guard, not a change on today's maps.
+  const nests: number[] = [];
+  const near = w.nests
     .filter((n) => n.owner === NEUTRAL)
-    .map((n) => ({ id: n.id, d: (n.x - x) ** 2 + (n.y - y) ** 2 }))
-    .sort((a, b) => a.d - b.d || a.id - b.id)
-    .slice(0, count)
-    .map((n) => n.id);
+    .map((n) => ({ n, d: (n.x - x) ** 2 + (n.y - y) ** 2 }))
+    .sort((a, b) => a.d - b.d || a.n.id - b.n.id);
+  const walk = w.terrain.reachableFrom(x, y);
+  for (const { n } of near) {
+    if (nests.length >= count) break;
+    if (walk(n.x, n.y)) nests.push(n.id);
+  }
   const t = w.tick;
   w.heart = {
     uid: w.uid[s],
@@ -132,9 +137,19 @@ export function standingNests(w: World): number {
   return n;
 }
 
-/** The heart's damage multiplier: each standing Bloom nest wards it. */
+/**
+ * The heart's damage multiplier. The ward gate (#252): while any of its Bloom
+ * nests stands, it takes no damage, so the finale is a fight across the map
+ * for the wards, not a straight dive at the heart.
+ */
 export function heartWard(w: World): number {
-  return Math.max(0.2, 1 - HEART.ward * standingNests(w));
+  return standingNests(w) > 0 ? 0 : 1;
+}
+
+/** Slot of the living heart while a ward still shields it (#252), or -1: units don't target it then. */
+export function shieldedHeart(w: World): number {
+  const s = heartSlot(w);
+  return s >= 0 && standingNests(w) > 0 ? s : -1;
 }
 
 /** Slot of the living heart, or -1. */

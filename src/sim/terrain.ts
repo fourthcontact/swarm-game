@@ -791,6 +791,15 @@ export class Terrain {
     return seen;
   }
 
+  /** Can a walker get from (x, y) to a point? One flood fill, for many checks. */
+  reachableFrom(x: number, y: number): (px: number, py: number) => boolean {
+    const seen = this.reach(x, y);
+    return (px, py) => {
+      const t = this.tileOf(px, py);
+      return !(this.flags[t] & T_BLOCK) && seen[t] === 1;
+    };
+  }
+
   /** Is every listed point reachable from the first? (mapgen validation) */
   connected(points: readonly [number, number][]): boolean {
     if (points.length < 2) return true;

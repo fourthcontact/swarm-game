@@ -2,22 +2,24 @@ import { describe, expect, it } from 'vitest';
 import { nodeSetup } from '../src/campaign/battle';
 import { newRun } from '../src/campaign/run';
 import { Kind, NEUTRAL, NestType, TICK_HZ } from '../src/sim/constants';
-import { resolveDamage } from '../src/sim/combat';
+import { resolveDamage, updateCombat } from '../src/sim/combat';
 import { initEvents } from '../src/sim/events';
 import { worldHash } from '../src/sim/hash';
-import { HEART, heartSlot, heartWard, initHeart, standingNests } from '../src/sim/heart';
+import { HEART, heartSlot, heartWard, initHeart, shieldedHeart, standingNests } from '../src/sim/heart';
 import type { EventParams } from '../src/sim/mapgen';
 import { createWorld } from '../src/sim/setup';
 import { step } from '../src/sim/step';
 import { Proxy } from '../src/proxy/proxy';
 import { spawnUnit, World, type HeartRule } from '../src/sim/world';
+import type { TerrainSpec } from '../src/sim/terrain';
+import type { Command } from '../src/sim/commands';
 
 // Events must be on for the heart; nothing else should fire during a test.
 const QUIET: EventParams = { swarm: null, drop: { first: 1e6, every: 1e6 }, colossus: [], regrow: 0 };
 
 /** Faction 0 (human) and 1 (bot) on a 1200 × 900 field, two neutral nests near the middle. */
-function arena(rule: HeartRule = 'heart', strength = 0): World {
-  const w = new World(5, 1200, 900);
+function arena(rule: HeartRule = 'heart', strength = 0, terrain?: TerrainSpec): World {
+  const w = new World(5, 1200, 900, terrain);
   for (const f of [0, 1]) {
     w.factions[f].active = true;
     w.setTeam(f, f);
@@ -54,21 +56,108 @@ describe("the Bloom's heart", () => {
     expect([w.x[s], w.y[s]]).toEqual([h.x, h.y]);
   });
 
-  it('is warded by every Bloom nest the Bloom still holds', () => {
+  it('takes no damage while any Bloom nest the Bloom holds still stands (#252)', () => {
     const w = arena();
     const s = heartSlot(w);
     expect(standingNests(w)).toBe(2);
-    expect(heartWard(w)).toBeCloseTo(1 - 2 * HEART.ward);
+    expect(heartWard(w)).toBe(0);
     const hp = w.hp[s];
     w.dmg[s] = 100;
     resolveDamage(w);
-    expect(hp - w.hp[s]).toBeCloseTo(100 * (1 - 2 * HEART.ward));
+    expect(w.hp[s]).toBe(hp);
+    // One down, one standing: still shielded.
     w.nests[0].owner = 0;
-    expect(heartWard(w)).toBeCloseTo(1 - HEART.ward);
+    expect(heartWard(w)).toBe(0);
+    w.dmg[s] = 100;
+    resolveDamage(w);
+    expect(w.hp[s]).toBe(hp);
+    // Every ward down: full damage.
+    w.nests[1].owner = 0;
+    expect(heartWard(w)).toBe(1);
+    w.dmg[s] = 100;
+    resolveDamage(w);
+    expect(hp - w.hp[s]).toBeCloseTo(100);
+    w.nests[1].owner = NEUTRAL;
     // A nest the players took stays lost to the Bloom, even if it goes wild again.
     step(w, []);
     w.nests[0].owner = NEUTRAL;
     expect(standingNests(w)).toBe(1);
+  });
+
+  it('only wakes nests you can walk to from it (#252)', () => {
+    // A closed ring of wall round the west nest: with the ward gate, a ward
+    // nobody can reach would leave the heart unhurtable for good.
+    const ring = [[-1, -1, 1, -1], [1, -1, 1, 1], [1, 1, -1, 1], [-1, 1, -1, -1]].map(([a, b, c, d]) => ({ x1: 400 + a * 70, y1: 450 + b * 70, x2: 400 + c * 70, y2: 450 + d * 70, r: 12 }));
+    const w = arena('heart', 0, { walls: ring, fields: [], crystals: [] });
+    expect(w.heart!.nests).toEqual([1]);
+  });
+
+  it("units don't fire at it while it's shielded, and do once every ward falls (#252)", () => {
+    const w = arena();
+    const h = w.heart!, s = heartSlot(w);
+    expect(shieldedHeart(w)).toBe(s);
+    const mine = units(w, 0, Kind.Dot, 8, h.x - 40, h.y);
+    step(w, []);
+    for (const u of mine) if (w.alive[u]) expect(w.tgt[u]).not.toBe(s);
+    for (const id of h.nests) w.nests[id].owner = 0;
+    expect(shieldedHeart(w)).toBe(-1);
+    updateCombat(w);
+    expect(mine.some((u) => w.alive[u] && w.tgt[u] === s)).toBe(true);
+  });
+
+  // The human proxy (#252): wards first, with its nests rallying there, but
+  // never a ward too well held for its blob.
+  const wardOrders = (w: World) => {
+    const proxy = new Proxy(0, { skill: 1 });
+    const out: Command[] = [];
+    // One step first, so the spatial grid holds the units.
+    step(w, []);
+    for (let t = 0; t < 6 * TICK_HZ; t++) {
+      const cmds = proxy.think(w);
+      out.push(...cmds);
+      step(w, cmds);
+    }
+    const wards = new Set(w.heart!.nests);
+    return { moves: out.filter((c) => c.t === 'move' && wards.has(c.nest)), rallies: out.filter((c) => c.t === 'rally') };
+  };
+  it('the proxy marches on the nearest ward and rallies its nests there', () => {
+    const w = arena();
+    units(w, 0, Kind.Dot, 60, 160, 160);
+    const { moves, rallies } = wardOrders(w);
+    expect(moves.length).toBeGreaterThan(0);
+    const first = moves[0] as Extract<Command, { t: 'move' }>;
+    expect(first.nest).toBe(0);
+    expect(rallies.some((c) => c.t === 'rally' && c.x === w.nests[0].x && c.y === w.nests[0].y)).toBe(true);
+  });
+  it('the proxy marches on the ward nearest on foot, not as the crow flies', () => {
+    // A wall from the top edge down past the west ward: walking to it from the
+    // north-west means going round the bottom, past the east ward's distance.
+    const wall = [{ x1: 330, y1: 0, x2: 330, y2: 820, r: 12 }, { x1: 330, y1: 820, x2: 470, y2: 820, r: 12 }, { x1: 470, y1: 820, x2: 470, y2: 380, r: 12 }];
+    const w = arena('heart', 0, { walls: wall, fields: [], crystals: [] });
+    units(w, 0, Kind.Dot, 60, 160, 160);
+    const crow = (id: number) => Math.hypot(w.nests[id].x - 170, w.nests[id].y - 180);
+    expect(crow(0)).toBeLessThan(crow(1));
+    const first = wardOrders(w).moves[0] as Extract<Command, { t: 'move' }>;
+    expect(first.nest).toBe(1);
+  });
+  it('the proxy stays on a ward it is fighting for while it still outweighs it', () => {
+    const w = arena();
+    const id = w.heart!.nests[0];
+    // Garrison enough that a fresh 60 wouldn't start (60 < def × margin + 3), but does outweigh it.
+    units(w, NEUTRAL, Kind.Dot, 52, w.nests[id].x - 14, w.nests[id].y - 30);
+    units(w, NEUTRAL, Kind.Tank, 60, w.nests[1].x - 14, w.nests[1].y - 30);
+    units(w, 0, Kind.Dot, 60, 160, 160);
+    step(w, []);
+    const fresh = new Proxy(0, { skill: 1 }) as unknown as { nearestWard: (w: World, x: number, y: number, n: number) => unknown; goal: number };
+    expect(fresh.nearestWard(w, 170, 180, 60)).toBe(null);
+    fresh.goal = id;
+    expect(fresh.nearestWard(w, 170, 180, 60)).toBe(w.nests[id]);
+  });
+  it("the proxy leaves a ward it can't take", () => {
+    const w = arena();
+    for (const id of w.heart!.nests) units(w, NEUTRAL, Kind.Tank, 40, w.nests[id].x - 14, w.nests[id].y - 30);
+    units(w, 0, Kind.Dot, 60, 160, 160);
+    expect(wardOrders(w).moves).toEqual([]);
   });
 
   it('telegraphs its pulse, which hits what is inside its ring and nothing else', () => {
@@ -113,7 +202,24 @@ describe("the Bloom's heart", () => {
     expect(w.hp[s]).toBeLessThanOrEqual(h.maxHp * (2 / 3) + 1e-6);
   });
 
+  it("stray hits on a shielded heart don't stop it regrowing; real hits do (#252)", () => {
+    const w = arena();
+    const s = heartSlot(w), h = w.heart!;
+    w.hp[s] = h.maxHp * 0.5;
+    const before = h.threat;
+    step(w, []);
+    w.dmg[s] = 5;
+    resolveDamage(w);
+    expect(h.threat).toBe(before);
+    for (const id of h.nests) w.nests[id].owner = 0;
+    w.dmg[s] = 5;
+    resolveDamage(w);
+    expect(h.threat).toBe(w.tick);
+  });
+
+  // The wards fall first: while one stands, the heart can't be hurt (#252).
   const kill = (w: World, by: number) => {
+    for (const id of w.heart!.nests) w.nests[id].owner = by;
     const s = heartSlot(w);
     w.hp[s] = 1;
     w.dmg[s] = 1e6;

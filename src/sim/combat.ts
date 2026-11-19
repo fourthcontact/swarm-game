@@ -3,7 +3,7 @@ import { queryRadius } from './spatial';
 import { segDist2 } from './terrain';
 import { pushFx, removeUnit, UNIT_RETREAT, WILD_HEART, type World } from './world';
 import { colossusSlain } from './events';
-import { heartSlain, heartWard } from './heart';
+import { heartSlain, heartWard, shieldedHeart } from './heart';
 
 /**
  * Most in-range enemies one scan weighs before taking the nearest so far.
@@ -19,18 +19,19 @@ const pierceScratch: number[] = [];
  * Nearest hostile unit within radius that isn't behind a wall, or -1.
  * Line of sight is only checked on the winner; if a wall blocks it, scan
  * again checking every candidate (rare: only right next to walls).
+ * `skip` is a slot never chosen: the shielded heart (#252).
  */
-function findTarget(w: World, i: number, radius: number): number {
-  const best = scanTarget(w, i, radius, false);
+function findTarget(w: World, i: number, radius: number, skip: number): number {
+  const best = scanTarget(w, i, radius, false, skip);
   if (best < 0 || !w.terrain.hasWalls || w.terrain.los(w.x[i], w.y[i], w.x[best], w.y[best])) return best;
-  return scanTarget(w, i, radius, true);
+  return scanTarget(w, i, radius, true, skip);
 }
 
 /**
  * Nearest hostile unit within radius, or -1. Tanks draw fire: they count as
  * closer than they are. Scan is capped for dense blobs.
  */
-function scanTarget(w: World, i: number, radius: number, walls: boolean): number {
+function scanTarget(w: World, i: number, radius: number, walls: boolean, skip: number): number {
   const g = w.grid;
   const { items, start, byFaction, fstart, stale, factions: cellFactions, cols } = g;
   const { teamOf, owner, alive, kind, ghost } = w;
@@ -63,7 +64,7 @@ function scanTarget(w: World, i: number, radius: number, walls: boolean): number
       }
       for (; k < e; k++) {
         const j = list[k];
-        if (teamOf[owner[j]] === myTeam || !alive[j]) continue;
+        if (teamOf[owner[j]] === myTeam || !alive[j] || j === skip) continue;
         const dx = xs[j] - x, dy = ys[j] - y;
         const raw = dx * dx + dy * dy;
         if (raw > r2) continue;
@@ -83,6 +84,9 @@ function scanTarget(w: World, i: number, radius: number, walls: boolean): number
 export function updateCombat(w: World): void {
   const n = w.n;
   const phase = w.tick % RETARGET;
+  // The ward gate (#252): a heart that can't be hurt isn't worth a shot, so
+  // units pass it by on their way to the wards instead of stalling there.
+  const skip = shieldedHeart(w);
   for (let i = 0; i < n; i++) {
     w.engaged[i] = 0;
     // Retreating Raiders (Skirmish) don't stop to fight; Echo's ghosts never do.
@@ -96,7 +100,7 @@ export function updateCombat(w: World): void {
     // answering an attacker that outranges it.
     const reach = aggro + RETALIATE_EXTRA;
     let t = w.tgt[i];
-    let valid = t >= 0 && w.alive[t] === 1 && w.uid[t] === w.tgtUid[i];
+    let valid = t >= 0 && t !== skip && w.alive[t] === 1 && w.uid[t] === w.tgtUid[i];
     let d2 = 0;
     if (valid) {
       const dx = w.x[t] - w.x[i], dy = w.y[t] - w.y[i];
@@ -104,11 +108,11 @@ export function updateCombat(w: World): void {
       if (d2 > reach * reach) valid = false;
     }
     if (!valid || i % RETARGET === phase) {
-      let nt = findTarget(w, i, aggro);
+      let nt = findTarget(w, i, aggro, skip);
       if (nt < 0) {
         // Nothing in sight: turn on whoever shot us, if they're close enough.
         const a = w.attacker[i];
-        if (a >= 0 && w.alive[a] && w.uid[a] === w.attackerUid[i]) {
+        if (a >= 0 && a !== skip && w.alive[a] && w.uid[a] === w.attackerUid[i]) {
           const ax = w.x[a] - w.x[i], ay = w.y[a] - w.y[i];
           if (ax * ax + ay * ay <= reach * reach && (!w.terrain.hasWalls || w.terrain.los(w.x[i], w.y[i], w.x[a], w.y[a]))) nt = a;
         }
@@ -232,8 +236,9 @@ export function resolveDamage(w: World): void {
     let ward = 1;
     if (w.wild[i] === WILD_HEART) {
       ward = heartWard(w);
-      // Any hit, from any range, keeps it from regrowing.
-      w.heart!.threat = w.tick;
+      // Any hit that can hurt it, from any range, keeps it from regrowing.
+      // Stray splash on a shielded heart doesn't (#252).
+      if (ward > 0) w.heart!.threat = w.tick;
     }
     w.hp[i] -= w.dmg[i] * taken(w, i) * ward;
     w.dmg[i] = 0;

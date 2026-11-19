@@ -46,6 +46,8 @@ import {
 export const MAP_W = 1000;
 export const MAP_H = 620;
 export const RUN_VERSION = 2;
+/** The finale rules a run's finale node was built with (#252). Older saves have none: loadRun brings them up to date once. */
+export const FINALE_RULES = 1;
 /** share of battle nodes that offer a brood to rescue */
 const RESCUE_ODDS = 0.25;
 
@@ -71,7 +73,11 @@ export interface DifficultyRules {
   lossStep: number;
   /** bot difficulty shift: -1 on Normal nodes (Gentle), +1 on Hard nodes (Brutal, whose finale also needs the rivals beaten) */
   bots: -1 | 0 | 1;
-  /** the finale's rivals and their bot difficulty (#68: it was the wall, a quarter of attempts won at 3 Hard rivals) */
+  /**
+   * the finale's rivals and their bot difficulty (#68: it was the wall, a quarter of attempts won at 3 Hard rivals).
+   * #252: one level above the run's hardest regular node, at most Brutal, so the finale is the run's hardest battle.
+   * At most 2 Brutal rivals, as on Brutal's own late nodes: 3 won a tenth of finales, harder than Brutal's.
+   */
   finale: { rivals: number; difficulty: number };
   /** share of its size a fielded brood keeps after a lost battle */
   lossKeep: number;
@@ -86,10 +92,10 @@ export interface DifficultyRules {
 }
 export const DIFFICULTIES: RunDifficulty[] = ['gentle', 'standard', 'hard', 'brutal'];
 export const RUN_DIFFICULTY: Record<RunDifficulty, DifficultyRules> = {
-  gentle: { name: 'Gentle', blurb: 'A slow Bloom that slows further after a loss, lighter losses, and easier battles.', pace: 0.45, lossStep: 0.5, bots: -1, finale: { rivals: 2, difficulty: 2 }, lossKeep: 0.75, rivalProd: 0.8, heartCarry: 0.75, salvage: 0.35, retries: 3 },
-  standard: { name: 'Standard', blurb: 'The Bloom leaves room for a lost battle or two.', pace: 0.45, lossStep: 1, bots: 0, finale: { rivals: 2, difficulty: 2 }, lossKeep: 0.5, rivalProd: 0.9, heartCarry: 0.5, salvage: 0.35, retries: 2 },
-  hard: { name: 'Hard', blurb: 'A faster Bloom: little room for losses.', pace: 0.5, lossStep: 1, bots: 0, finale: { rivals: 3, difficulty: 2 }, lossKeep: 0.5, rivalProd: 1, heartCarry: 0.25, salvage: 0.2, retries: 1 },
-  brutal: { name: 'Brutal', blurb: 'Hard\'s Bloom, Brutal bots in the late battles, and a finale where the rivals must fall too.', pace: 0.5, lossStep: 1, bots: 1, finale: { rivals: 2, difficulty: 2 }, lossKeep: 0.5, rivalProd: 1, heartCarry: 0, salvage: 0, retries: 0 },
+  gentle: { name: 'Gentle', blurb: 'A slow Bloom that slows further after a loss, lighter losses, and easier battles.', pace: 0.45, lossStep: 0.5, bots: -1, finale: { rivals: 2, difficulty: 3 }, lossKeep: 0.75, rivalProd: 0.8, heartCarry: 0.75, salvage: 0.35, retries: 3 },
+  standard: { name: 'Standard', blurb: 'The Bloom leaves room for a lost battle or two.', pace: 0.45, lossStep: 1, bots: 0, finale: { rivals: 2, difficulty: 3 }, lossKeep: 0.5, rivalProd: 0.9, heartCarry: 0.5, salvage: 0.35, retries: 2 },
+  hard: { name: 'Hard', blurb: 'A faster Bloom: little room for losses.', pace: 0.5, lossStep: 1, bots: 0, finale: { rivals: 2, difficulty: 3 }, lossKeep: 0.5, rivalProd: 1, heartCarry: 0.25, salvage: 0.2, retries: 1 },
+  brutal: { name: 'Brutal', blurb: 'Hard\'s Bloom, Brutal bots in the late battles, and a finale where the rivals must fall too.', pace: 0.5, lossStep: 1, bots: 1, finale: { rivals: 2, difficulty: 3 }, lossKeep: 0.5, rivalProd: 1, heartCarry: 0, salvage: 0, retries: 0 },
 };
 /** saves from before difficulty were Standard */
 export const difficultyOf = (run: { difficulty?: RunDifficulty }): RunDifficulty => run.difficulty ?? 'standard';
@@ -208,6 +214,8 @@ export interface RunState {
   swallowed: number[];
   /** the heart's wounds from lost finales: the share of its HP it starts the next one without (heartCarry) */
   heartWound?: number;
+  /** FINALE_RULES when the finale node was built or last brought up to date (older saves: none) */
+  finaleRules?: number;
   bloom: Bloom;
   turn: number;
   /** chosen at the start (older saves: Standard, see difficultyOf) */
@@ -492,6 +500,7 @@ export function newRun(seedText: string, color: number, pack: PackId = 'swarm', 
 
   return {
     v: RUN_VERSION,
+    finaleRules: FINALE_RULES,
     id: `${now.toString(36)}-${(seed % 46656).toString(36)}`,
     seedText: seedText.trim() || 'swarm',
     seed,

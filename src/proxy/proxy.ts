@@ -21,7 +21,7 @@
 
 import { barrageLaunch, feedNeed, hasPower, surgeCost, type Command } from '../sim/commands';
 import { LEVEL, MAX_LEVEL, NEUTRAL, NestType, POWER, TICK_HZ, UNIT_STATS, UPGRADE_COST, UPGRADE_PICK_RADIUS, bastionTurret } from '../sim/constants';
-import { heartSlot, standingNests } from '../sim/heart';
+import { heartSlot, shieldedHeart, standingNests } from '../sim/heart';
 import { POWER_LOCK } from '../sim/mods';
 import { queryRadius } from '../sim/spatial';
 import { inArmy, type Nest, type World } from '../sim/world';
@@ -163,6 +163,46 @@ export class Proxy {
     let n = 0;
     for (const s of scratch) if (w.hostile(w.owner[s], this.f) && (w.owner[s] !== NEUTRAL || w.wild[s] !== 0)) n++;
     return n;
+  }
+
+  /**
+   * Can a blob of `size` take a nest defended by `def`? Once it's committed
+   * to the nest, it stays while it still outweighs the defense, so a few
+   * losses in the fight don't pull it off half-taken ground (#252).
+   */
+  private canTake(def: number, size: number, committed = false): boolean {
+    return committed ? def <= size : def * this.k.margin + 3 <= size;
+  }
+
+  /**
+   * The heart's Bloom nest still standing (#252) nearest on foot that a blob
+   * of `size` can take, or null. Ties go to the earlier ward in `heart.nests`.
+   * A ward too well held is skipped, like any other nest, so the blob grows
+   * on easier ground instead of throwing itself at it again and again.
+   */
+  private nearestWard(w: World, x: number, y: number, size: number): Nest | null {
+    let best: Nest | null = null, bestD = Infinity;
+    for (const id of w.heart?.nests ?? []) {
+      const n = w.nests[id];
+      if (n.owner !== NEUTRAL || !this.canTake(this.defense(w, n), size, n.id === this.goal)) continue;
+      const d = w.terrain.pathDist(x, y, n.x, n.y, w.tick);
+      if (d < bestD) (best = n), (bestD = d);
+    }
+    return best;
+  }
+
+  /**
+   * Send the blob at a goal (`key`: a nest id, or HEART_GOAL), and rally our
+   * nests there when the goal changes. Re-sent every `refresh` seconds.
+   */
+  private march(w: World, blob: number[], bx: number, by: number, mine: Nest[], x: number, y: number, key: number, out: Command[]): void {
+    if (this.goal === key && w.tick - this.lastOrder < this.k.refresh * TICK_HZ) return;
+    const me = this.f;
+    const units = this.straggle(w, blob, bx, by);
+    out.push({ t: 'move', p: me, units: units.map((s) => w.uid[s]), x, y, nest: key >= 0 ? key : -1 });
+    if (mine.length && this.goal !== key) out.push({ t: 'rally', p: me, nests: mine.map((n) => n.id), x, y });
+    this.goal = key;
+    this.lastOrder = w.tick;
   }
 
   constructor(
@@ -315,18 +355,18 @@ export class Proxy {
           return out;
         }
       }
-      // The Bloom's heart (campaign finale): once its nests are taken, or the
-      // blob is big enough to grind through the ward, go for it.
+      // The Bloom's heart (campaign finale). It can't be hurt while a Bloom nest
+      // stands (#252), so like a player, the blob takes the nearest ward first.
       const heart = heartSlot(w);
-      if (heart >= 0 && blob.length >= 45 && (standingNests(w) === 0 || blob.length >= 90)) {
-        const hx = w.x[heart], hy = w.y[heart];
-        if (this.goal !== HEART_GOAL || w.tick - this.lastOrder >= this.k.refresh * TICK_HZ) {
-          const units = this.straggle(w, blob, bx, by);
-          out.push({ t: 'move', p: me, units: units.map((s) => w.uid[s]), x: hx, y: hy, nest: -1 });
-          if (mine.length && this.goal !== HEART_GOAL) out.push({ t: 'rally', p: me, nests: mine.map((n) => n.id), x: hx, y: hy });
-          this.goal = HEART_GOAL;
-          this.lastOrder = w.tick;
-        }
+      const ward = heart >= 0 && blob.length >= 45 ? this.nearestWard(w, bx, by, blob.length) : null;
+      if (ward) {
+        this.march(w, blob, bx, by, mine, ward.x, ward.y, ward.id, out);
+        this.mode = 'counter';
+        this.upgrade(w, mine, army, out);
+        return out;
+      }
+      if (heart >= 0 && blob.length >= 45 && standingNests(w) === 0) {
+        this.march(w, blob, bx, by, mine, w.x[heart], w.y[heart], HEART_GOAL, out);
         this.mode = 'counter';
         this.upgrade(w, mine, army, out);
         return out;
@@ -336,13 +376,7 @@ export class Proxy {
       // Only with the upper hand there, though: like a human, it expands until then.
       const cit = w.citadel >= 0 ? w.nests[w.citadel] : null;
       if (cit && cit.owner !== me && blob.length >= this.citadelBlob && blob.length >= CITADEL_EDGE * this.near(w, cit.x, cit.y, CITADEL_R)) {
-        if (this.goal !== cit.id || w.tick - this.lastOrder >= this.k.refresh * TICK_HZ) {
-          const units = this.straggle(w, blob, bx, by);
-          out.push({ t: 'move', p: me, units: units.map((s) => w.uid[s]), x: cit.x, y: cit.y, nest: cit.id });
-          if (mine.length && this.goal !== cit.id) out.push({ t: 'rally', p: me, nests: mine.map((n) => n.id), x: cit.x, y: cit.y });
-          this.goal = cit.id;
-          this.lastOrder = w.tick;
-        }
+        this.march(w, blob, bx, by, mine, cit.x, cit.y, cit.id, out);
         this.mode = 'counter';
         this.upgrade(w, mine, army, out);
         return out;
@@ -397,7 +431,7 @@ export class Proxy {
           if (n.contested && !leader && !this.closeTo(w, n, blob)) continue;
         }
         const def = this.defense(w, n, scout);
-        if (def * this.k.margin + 3 > blob.length) continue;
+        if (!this.canTake(def, blob.length)) continue;
         const dist = Math.sqrt((n.x - bx) ** 2 + (n.y - by) ** 2);
         let score = (enemy ? 1.15 : 1) / (1 + dist / 350) / (def + 4);
         if (leader) score *= racing ? 8 : 3;
@@ -507,9 +541,11 @@ export class Proxy {
     if (center < 0 || most < (flush ? 3 : 6)) return;
     queryRadius(w, w.x[center], w.y[center], 90, scratch);
     const own = scratch.filter((s) => w.owner[s] === me && inArmy(w, s)).map((s) => w.uid[s]);
+    // A shielded heart takes no damage (#252): it's no target for a Barrage.
+    const shielded = shieldedHeart(w);
     let ex = 0, ey = 0, ne = 0;
     for (const s of scratch) {
-      if (!w.hostile(w.owner[s], me)) continue;
+      if (!w.hostile(w.owner[s], me) || s === shielded) continue;
       ex += w.x[s];
       ey += w.y[s];
       ne++;

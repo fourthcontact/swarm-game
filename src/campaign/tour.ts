@@ -5,7 +5,9 @@
  * The glossary below is the same words, for the campaign's How to play.
  */
 
-import { MAP_H, MAP_W, frontShape, living, moves, revealed, type RunState } from './run';
+import { COST, UNLOCKS } from './broods';
+import { REROLL } from './rewards';
+import { MAP_H, MAP_W, frontShape, living, moves, revealed, unlockCost, unlocked, type RunState } from './run';
 import type { Warlord } from './warlords';
 
 /** Where a step looks: a point in map space and about how much of the map's width to show (null: all of it). */
@@ -27,7 +29,8 @@ export type TourCamp = 'broods' | 'unlocks' | 'rewards';
 export interface TourStep {
   id: string;
   title: string;
-  text: string;
+  /** a function for steps that quote the run's live numbers (#251) */
+  text: string | ((run: RunState) => string);
   focus: (run: RunState) => TourFocus;
   marks?: (run: RunState) => TourMark[];
   /** nodes shown through the fog for this step (at the start, you know only your neighbours) */
@@ -184,6 +187,61 @@ export const TOUR: TourStep[] = [
 /** The steps for this run, minus any it has nothing to show for. */
 export const tourFor = (run: RunState): TourStep[] => TOUR.filter((s) => !s.when || s.when(run));
 
+/** Which tour a map opens with: the full map tour (#217) or the camp reminder (#251). */
+export type TourKind = 'map' | 'camp';
+
+export const stepsFor = (kind: TourKind, run: RunState): TourStep[] => (kind === 'map' ? tourFor(run) : CAMP_HINT);
+
+export const stepText = (s: TourStep, run: RunState): string => (typeof s.text === 'string' ? s.text : s.text(run));
+
+/** The cheapest nest type still locked, or null when all are unlocked. */
+const nextNest = (run: RunState): number | null => {
+  const left = UNLOCKS.filter((u) => u !== 'nova' && !unlocked(run, u));
+  return left.length ? unlockCost(run, left[0]) : null;
+};
+
+/**
+ * The camp reminder (#251): the main tour explains biomass on turn 0, before
+ * you've earned any. This comes back to it the first time you return to the
+ * map with some, quoting what you hold and what things cost now.
+ */
+export const CAMP_HINT: TourStep[] = [
+  {
+    id: 'earned',
+    title: 'Biomass',
+    text: (run) => `You have ${run.biomass} biomass (at the top). Battles pay it, a loss pays a little, and it carries over from battle to battle. Spend it at the camp: tap your swarm.`,
+    focus: (run) => at(run, run.at, 360),
+    marks: (run) => [ring(run, run.at, 1.6)],
+    dom: '.run-stats',
+  },
+  {
+    id: 'heal-grow',
+    title: 'Heal and grow',
+    text: (run) => {
+      const hurt = run.broods.filter((b) => b.wounded > 0).length;
+      const grow = run.broods.length ? Math.min(...run.broods.map((b) => COST.grow(b))) : null;
+      const heal = hurt
+        ? `${hurt === 1 ? 'One of your broods is' : `${hurt} of your broods are`} wounded and will sit out battles. Healing costs ${COST.heal} and lets it fight next battle.`
+        : `A brood that loses comes back wounded and sits out battles. Healing costs ${COST.heal} and lets it fight next battle.`;
+      return `${heal} Growing a brood raises its cap by ${COST.growBy}${grow === null ? '' : ` from ${grow} biomass`}, and costs more each time.`;
+    },
+    focus: (run) => at(run, run.at, 360),
+    camp: 'broods',
+  },
+  {
+    id: 'unlocks',
+    title: 'Unlocks',
+    text: (run) => {
+      const nest = nextNest(run);
+      const nests = nest === null ? 'Every nest type is unlocked.' : `Unlocking a nest type costs ${nest} now, and more for each one after. Until a type is unlocked, its nests make only Swarmers for you.`;
+      const nova = run.unlocks.nova ? '' : ` Nova costs ${COST.nova}.`;
+      return `${nests}${nova} Rerolling a reward offer costs biomass too: ${REROLL.base} for the first.`;
+    },
+    focus: (run) => at(run, run.at, 360),
+    camp: 'unlocks',
+  },
+];
+
 /** The campaign's terms, for How to play. */
 export const GLOSSARY: { term: string; text: string }[] = [
   { term: 'The goal', text: "Cross the map one territory a turn and destroy the Bloom's heart, the star on the far side, before the Bloom swallows your road or your broods." },
@@ -204,15 +262,17 @@ const KEY = 'swarm.runGuide';
 export interface RunGuide {
   /** the map tour was finished or skipped */
   toured: boolean;
+  /** the camp reminder (#251) was finished or skipped */
+  campHinted: boolean;
 }
 
 export function loadGuide(): RunGuide {
   try {
     const raw = localStorage.getItem(KEY);
     const g = raw ? (JSON.parse(raw) as Partial<RunGuide>) : {};
-    return { toured: !!g.toured };
+    return { toured: !!g.toured, campHinted: !!g.campHinted };
   } catch {
-    return { toured: false };
+    return { toured: false, campHinted: false };
   }
 }
 
@@ -226,3 +286,11 @@ export function saveGuide(g: RunGuide): void {
 
 /** Should this run open with the tour? Its first turn, and only until the tour's been seen once. */
 export const wantsTour = (run: RunState, g = loadGuide()): boolean => !g.toured && run.turn === 0 && run.status === 'active';
+
+/**
+ * Should the map open with the camp reminder (#251)? Back on the map after a
+ * battle with biomass to spend, once per profile. Players who skipped the main
+ * tour see it too.
+ */
+export const wantsCampHint = (run: RunState, g = loadGuide()): boolean =>
+  !g.campHinted && run.turn >= 1 && run.biomass > 0 && run.status === 'active' && run.broods.length > 0;

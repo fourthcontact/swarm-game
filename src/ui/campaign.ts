@@ -54,7 +54,7 @@ import { FAMILY_LABEL, POWER_LABEL, REWARD, STRAIN_SLOTS, rewardText, type Famil
 import { COST, KIND_NAME, KIND_NEST, KIND_ONE, MAX_ROSTER, PACKS, UNLOCKS, fit, veteran, type Brood, type BroodEvent, type PackId, type Unlock } from '../campaign/broods';
 import { KEYS, Kind, NestType, TICK_HZ } from '../sim/constants';
 import type { PastRun } from '../campaign/store';
-import { tourFor, type TourCamp, type TourFocus, type TourMark } from '../campaign/tour';
+import { stepsFor, type TourCamp, type TourKind, type TourFocus, type TourMark } from '../campaign/tour';
 import { mountTour, runHowTo, type Tour } from './runtour';
 import { onRival, rivalStrip, showBigMap, showRival } from './battlepeek';
 import { el, esc } from './dom';
@@ -947,10 +947,10 @@ export interface MapIntro {
 export function runMap(
   run: RunState,
   sfx: AudioEngine,
-  h: { go: (id: number, fielded: number[]) => void; leave: () => void; save: () => void; toured?: () => void; checked?: () => void },
+  h: { go: (id: number, fielded: number[]) => void; leave: () => void; save: () => void; toured?: (kind: TourKind) => void; checked?: () => void },
   intro: MapIntro | null = null,
-  /** open with the map tour (#217) */
-  tour = false,
+  /** open with the map tour (#217) or the camp reminder (#251) */
+  tour: TourKind | null = null,
 ): HTMLDivElement {
   const m = el(`
     <div class="screen modal runmap">
@@ -1286,14 +1286,14 @@ export function runMap(
     return { cx: f.x, cy: f.y, zoom: f.span === null || cw <= 0 ? 1 : cw / f.span / fitScale(cw, ch) };
   };
   let active: Tour | null = null;
-  const startTour = () => {
+  const startTour = (kind: TourKind = 'map') => {
     if (active || moving || run.status !== 'active') return;
     close();
     closeCamp();
     hover = null;
     c.style.cursor = '';
     m.classList.add('touring');
-    active = mountTour(wrap, tourFor(run), run, {
+    active = mountTour(wrap, stepsFor(kind, run), run, {
       focus: (f) => {
         if (!cam) return;
         fly = { from: { ...cam }, to: camFor(f), t0: performance.now() };
@@ -1319,7 +1319,7 @@ export function runMap(
         close();
         closeCamp();
         if (cam) fly = { from: { ...cam }, to: homeCam(run, c.clientWidth * dpr(), c.clientHeight * dpr()), t0: performance.now() };
-        h.toured?.();
+        h.toured?.(kind);
       },
     });
   };
@@ -1331,7 +1331,7 @@ export function runMap(
       back: () => card.remove(),
       replay: () => {
         card.remove();
-        startTour();
+        startTour('map');
       },
     });
     card.classList.add('in-map');
@@ -1381,7 +1381,11 @@ export function runMap(
     }
     if (!cam && c.clientWidth > 0) {
       cam = homeCam(run, c.clientWidth * dpr(), c.clientHeight * dpr());
-      if (tour) startTour();
+    }
+    // After a battle, the reminder waits for the Bloom's advance to finish playing.
+    if (tour && cam && time >= (intro ? ANIM * 1.5 : 0)) {
+      startTour(tour);
+      tour = null;
     }
     if (fly && cam) {
       const t = Math.min(1, (performance.now() - fly.t0) / FLY);

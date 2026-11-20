@@ -264,8 +264,8 @@ function inside(x: number, y: number, lobes: [number, number, number][]): boolea
   return dx * dx + dy * dy < edge * edge;
 }
 
-/** Dart-throwing Poisson-disk sampling, loosened or tightened until the count lands in range. */
-function scatter(rng: Rng, want: number, lobes: [number, number, number][]): { x: number; y: number }[] {
+/** Dart-throwing Poisson-disk sampling, loosened or tightened until the count lands in range. Also returns the spacing it ended on. */
+function scatter(rng: Rng, want: number, lobes: [number, number, number][]): { pts: { x: number; y: number }[]; min: number } {
   let min = 150;
   let best: { x: number; y: number }[] = [];
   for (let tries = 0; tries < 30; tries++) {
@@ -277,10 +277,36 @@ function scatter(rng: Rng, want: number, lobes: [number, number, number][]): { x
       if (pts.every((p) => (p.x - x) ** 2 + (p.y - y) ** 2 >= min * min)) pts.push({ x, y });
     }
     if (Math.abs(pts.length - want) < Math.abs(best.length - want)) best = pts;
-    if (pts.length >= want && pts.length <= want + 2) return pts.slice(0, want);
+    if (pts.length >= want && pts.length <= want + 2) return { pts: pts.slice(0, want), min };
     min *= pts.length < want ? 0.93 : 1.06;
   }
-  return best.slice(0, want);
+  return { pts: best.slice(0, want), min };
+}
+
+/**
+ * Nothing beside or behind the start (#273): a point the start doesn't see
+ * ahead of it (the noisy ellipse curves round past it) could never be reached,
+ * so it's thrown again inside the region and the start's cone, as far from the
+ * others as the scatter's spacing allows (loosened if it finds no spot).
+ * `also` lists more points to throw again (entryLinks' stuck nodes).
+ */
+function intoCone(rng: Rng, pts: { x: number; y: number }[], start: number, heart: number, lobes: [number, number, number][], min: number, also: number[] = []): void {
+  const round = (p: { x: number; y: number }) => ({ x: Math.round(p.x), y: Math.round(p.y) });
+  // ...and short of the heart, which stays the furthest node across the map.
+  const seen = (p: { x: number; y: number }) => p.x < pts[heart].x && ahead([round(pts[start]), round(p), round(pts[heart])], 2, 0, 1);
+  for (let i = 0; i < pts.length; i++) {
+    if (i === start || i === heart || (seen(pts[i]) && !also.includes(i))) continue;
+    for (let gap = min, placed = false; !placed; gap *= 0.9) {
+      for (let k = 0; k < 2000 && !placed; k++) {
+        const p = { x: rng.range(30, MAP_W - 30), y: rng.range(30, MAP_H - 30) };
+        if (!inside(p.x, p.y, lobes) || !seen(p)) continue;
+        if (pts.every((q, j) => j === i || (q.x - p.x) ** 2 + (q.y - p.y) ** 2 >= gap * gap)) {
+          pts[i] = p;
+          placed = true;
+        }
+      }
+    }
+  }
 }
 
 /**
@@ -348,6 +374,51 @@ function forwardLinks(pts: { x: number; y: number }[], links: number[][], heart:
     added++;
   }
   return added;
+}
+
+/** Nodes a fresh run can reach from `start` by the step rule: every step a battle, so every step ahead. */
+function stepReach(pts: { x: number; y: number }[], links: number[][], heart: number, start: number): boolean[] {
+  const seen = pts.map((_, i) => i === start);
+  const queue = [start];
+  while (queue.length) {
+    const a = queue.pop()!;
+    for (const b of links[a])
+      if (!seen[b] && ahead(pts, heart, a, b)) {
+        seen[b] = true;
+        queue.push(b);
+      }
+  }
+  return seen;
+}
+
+/**
+ * A way in to every node (#273), as forwardLinks gives each a way out: a node
+ * whose neighbours all sit beside it could never be stepped to. Take the
+ * unreachable node nearest the start and give it the nearest link in that
+ * crosses no other: from a reachable node it lies ahead of, or else from an
+ * unreachable one (a way in once that one is reached). Repeat. When there is
+ * neither, it stops and returns that node, for newRun to move, unless `cross`
+ * allows a crossing link from a reachable node. The start always qualifies,
+ * since intoCone put every node ahead of it. Returns the stuck node, or -1.
+ */
+function entryLinks(pts: { x: number; y: number }[], links: number[][], heart: number, start: number, cross: boolean): number {
+  const d2 = (a: number, b: number) => (pts[a].x - pts[b].x) ** 2 + (pts[a].y - pts[b].y) ** 2;
+  const nearer = (x: number, y: number, to: number) => d2(to, x) - d2(to, y) || x - y;
+  for (;;) {
+    const reach = stepReach(pts, links, heart, start);
+    const out = pts.map((_, i) => i).filter((i) => !reach[i]).sort((x, y) => nearer(x, y, start));
+    if (!out.length) return -1;
+    const a = out[0];
+    const pool = pts.map((_, b) => b).filter((b) => b !== a && !links[a].includes(b) && ahead(pts, heart, b, a)).sort((x, y) => nearer(x, y, a));
+    const clear = (b: number) => !links.some((ls, c) => ls.some((e) => c < e && c !== a && c !== b && e !== a && e !== b && crosses(pts[a], pts[b], pts[c], pts[e])));
+    const b = pool.find((b) => reach[b] && clear(b)) ?? pool.find(clear) ?? (cross ? pool.find((b) => reach[b]) : undefined);
+    if (b === undefined) {
+      if (cross) throw new Error(`run map: no way in to node ${a}`);
+      return a;
+    }
+    links[a].push(b);
+    links[b].push(a);
+  }
 }
 
 /** Hops from `from` to every node, avoiding `blocked`. -1 = unreachable. */
@@ -425,16 +496,25 @@ export function newRun(seedText: string, color: number, pack: PackId = 'swarm', 
   const seed = hashString(`run:${seedText.trim() || 'swarm'}`);
   const rng = new Rng(seed);
   const lobes: [number, number, number][] = [1, 2, 3].map((k) => [rng.range(0.03, 0.09), k + 1, rng.range(0, Math.PI * 2)]);
-  const pts = scatter(rng, 24 + rng.int(8), lobes);
-  const links = link(pts);
+  const { pts, min } = scatter(rng, 24 + rng.int(8), lobes);
 
   let start = 0, heart = 0;
   pts.forEach((p, i) => {
     if (p.x < pts[start].x) start = i;
     if (p.x > pts[heart].x) heart = i;
   });
-  // On the rounded positions the nodes keep, so the rule holds exactly as play checks it.
-  forwardLinks(pts.map((p) => ({ x: Math.round(p.x), y: Math.round(p.y) })), links, heart);
+  intoCone(rng, pts, start, heart, lobes, min);
+  // A node with no way in but a crossing link is moved, and the links built again (#273).
+  let links: number[][] = [];
+  for (let round = 0; ; round++) {
+    links = link(pts);
+    // On the rounded positions the nodes keep, so the rules hold exactly as play checks them.
+    const rounded = pts.map((p) => ({ x: Math.round(p.x), y: Math.round(p.y) }));
+    forwardLinks(rounded, links, heart);
+    const stuck = entryLinks(rounded, links, heart, start, round >= 24);
+    if (stuck < 0) break;
+    intoCone(rng, pts, start, heart, lobes, min, [stuck]);
+  }
   const nodes: RunNode[] = pts.map((p, i) => ({
     id: i,
     x: Math.round(p.x),

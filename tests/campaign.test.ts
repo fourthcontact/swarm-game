@@ -151,6 +151,25 @@ describe('campaign run generation', () => {
     }
   });
 
+  it.each(SEEDS)('%s: every node can be reached from the start (#273)', (seed) => {
+    const run = newRun(seed, 0, 'swarm', 0);
+    expect(reachable(run)!.size).toBe(run.nodes.length);
+  });
+
+  it('every node is reachable and every start link is a move, on every difficulty (#273)', () => {
+    for (const d of DIFFICULTIES)
+      for (let i = 0; i < 300; i++) {
+        const run = newRun(`reach-${i}`, 0, 'swarm', 0, d);
+        expect(reachable(run)!.size, `reach-${i} ${d}`).toBe(run.nodes.length);
+        expect(moves(run), `reach-${i} ${d}`).toEqual(run.nodes[run.start].links);
+      }
+  });
+
+  it('vale-echo-83 no longer starts with a link it can never take (#273)', () => {
+    const run = newRun('vale-echo-83', 0, 'swarm', 0, 'standard');
+    expect(moves(run)).toEqual(run.nodes[run.start].links);
+  });
+
   it('you can still march back onto a node you took, but not into a new battle behind you (#128)', () => {
     for (const seed of SEEDS) {
       const run = newRun(seed, 0, 'swarm', 0);

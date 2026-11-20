@@ -151,8 +151,27 @@ describe('campaign run generation', () => {
     }
   });
 
+  it.each(SEEDS)('%s: every node can be reached from the start (#273)', (seed) => {
+    const run = newRun(seed, 0, 'swarm', 0);
+    expect(reachable(run)!.size).toBe(run.nodes.length);
+  });
+
+  it('every node is reachable and every start link is a move, on every difficulty (#273)', () => {
+    for (const d of DIFFICULTIES)
+      for (let i = 0; i < 300; i++) {
+        const run = newRun(`reach-${i}`, 0, 'swarm', 0, d);
+        expect(reachable(run)!.size, `reach-${i} ${d}`).toBe(run.nodes.length);
+        expect(moves(run), `reach-${i} ${d}`).toEqual(run.nodes[run.start].links);
+      }
+  });
+
+  it('vale-echo-83 no longer starts with a link it can never take (#273)', () => {
+    const run = newRun('vale-echo-83', 0, 'swarm', 0, 'standard');
+    expect(moves(run)).toEqual(run.nodes[run.start].links);
+  });
+
   it('you can still march back onto a node you took, but not into a new battle behind you (#128)', () => {
-    for (const seed of SEEDS) {
+    for (const seed of [...SEEDS, ...Array.from({ length: 300 }, (_, i) => `behind-${i}`)]) {
       const run = newRun(seed, 0, 'swarm', 0);
       const behind = run.nodes[run.start].links.find((l) => run.nodes[l].links.some((m) => m !== run.start && !ahead(run.nodes, run.heart, l, m)));
       if (behind === undefined || !moves(run).includes(behind)) continue;
@@ -481,7 +500,8 @@ describe('rewards', () => {
   /** A fresh run that has just won its first battle, so an offer is waiting. */
   const afterWin = (seed = 'reward', pack: 'swarm' | 'wall' | 'raid' = 'swarm') => {
     const run = newRun(seed, 0, pack, 0);
-    resolveTurn(run, moves(run)[0], WIN, run.fielded, 0);
+    // A node with no rescue, so the roster stays the pack's own kinds.
+    resolveTurn(run, moves(run).find((id) => run.nodes[id].rescue === undefined) ?? moves(run)[0], WIN, run.fielded, 0);
     return run;
   };
   const offerOf = (run: RunState, ids: string[]) => (run.offer = { ids, rerolls: 0 });

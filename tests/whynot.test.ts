@@ -26,6 +26,16 @@ describe("a closed node's card says why (#273)", () => {
     expect(whyNot(run, behind)).toBe('Behind you: new battles lie only ahead, toward the heart.');
   });
 
+  it('a linked node that is sealed or swallowed is not called "behind you"', () => {
+    const { run, behind } = oneStepIn();
+    const sealed: RunState = { ...run, sealed: [behind] };
+    expect(whyNot(sealed, behind)).not.toMatch(/Behind you/);
+    const eaten: RunState = { ...run, swallowed: [...run.swallowed, behind] };
+    expect(whyNot(eaten, behind)).not.toMatch(/Behind you/);
+    const over: RunState = { ...run, status: 'lost' };
+    expect(whyNot(over, behind)).not.toMatch(/Behind you/);
+  });
+
   it('a node you can no longer reach says you moved past it, and only then', () => {
     const { run } = oneStepIn();
     const reach = reachable(run)!;

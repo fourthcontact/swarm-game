@@ -171,7 +171,7 @@ describe('campaign run generation', () => {
   });
 
   it('you can still march back onto a node you took, but not into a new battle behind you (#128)', () => {
-    for (const seed of SEEDS) {
+    for (const seed of [...SEEDS, ...Array.from({ length: 300 }, (_, i) => `behind-${i}`)]) {
       const run = newRun(seed, 0, 'swarm', 0);
       const behind = run.nodes[run.start].links.find((l) => run.nodes[l].links.some((m) => m !== run.start && !ahead(run.nodes, run.heart, l, m)));
       if (behind === undefined || !moves(run).includes(behind)) continue;
@@ -500,7 +500,8 @@ describe('rewards', () => {
   /** A fresh run that has just won its first battle, so an offer is waiting. */
   const afterWin = (seed = 'reward', pack: 'swarm' | 'wall' | 'raid' = 'swarm') => {
     const run = newRun(seed, 0, pack, 0);
-    resolveTurn(run, moves(run)[0], WIN, run.fielded, 0);
+    // A node with no rescue, so the roster stays the pack's own kinds.
+    resolveTurn(run, moves(run).find((id) => run.nodes[id].rescue === undefined) ?? moves(run)[0], WIN, run.fielded, 0);
     return run;
   };
   const offerOf = (run: RunState, ids: string[]) => (run.offer = { ids, rerolls: 0 });

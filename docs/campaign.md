@@ -24,7 +24,7 @@ One seed generates everything: map, battles and reward offers. The run is determ
   - So every node can be reached (#273):
     - nodes are only placed where the start sees them ahead;
     - every node has a link out toward the heart (#128) and a link in from a node it lies ahead of;
-    - a node that could only get its way in by a crossing link is moved instead.
+    - a node that could only get its way in by a crossing link is moved instead. A crossing link is the last resort, after 24 moves; it didn't happen in 2000 test seeds.
 - **A turn:**
   1. Move to an adjacent node and fight its battle.
   2. The Bloom advances.

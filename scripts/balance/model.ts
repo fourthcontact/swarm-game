@@ -29,11 +29,11 @@ const DIFFS_OF: Record<number, RunDifficulty[]> = { [-1]: ['gentle'], 0: ['stand
 const PACKS: PackId[] = ['swarm', 'wall', 'raid'];
 const PANEL_FILE = 'panel.json';
 
-const armyOf = (run: RunState, fielded: number[]) => armyFor(run, fielded).reduce((s, a) => s + a.count, 0);
+export const armyOf = (run: RunState, fielded: number[]) => armyFor(run, fielded).reduce((s, a) => s + a.count, 0);
 
 // ---- snapshots ------------------------------------------------------------------
 
-interface Snapshot {
+export interface Snapshot {
   /** the run state before the battle, as JSON */
   state: string;
   id: number;
@@ -53,7 +53,7 @@ const SNAP_SEED = 5000;
  * unvisited node of that kind in the band of a battle it did fight (with that
  * battle's state, so a little early). Also the army fielded on the route, per band.
  */
-async function snapshots(pool: Pool): Promise<{ snaps: Snapshot[]; armies: number[][] }> {
+export async function snapshots(pool: Pool): Promise<{ snaps: Snapshot[]; armies: number[][] }> {
   const snaps: Snapshot[] = [];
   const armies: number[][] = Array.from({ length: BANDS }, () => []);
   const jobs: Promise<unknown>[] = [];

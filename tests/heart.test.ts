@@ -9,7 +9,7 @@ import { HEART, heartSlot, heartWard, initHeart, shieldedHeart, standingNests } 
 import type { EventParams } from '../src/sim/mapgen';
 import { createWorld } from '../src/sim/setup';
 import { step } from '../src/sim/step';
-import { Proxy } from '../src/proxy/proxy';
+import { Proxy, WARD_BLOB } from '../src/proxy/proxy';
 import { spawnUnit, World, type HeartRule } from '../src/sim/world';
 import type { TerrainSpec } from '../src/sim/terrain';
 import type { Command } from '../src/sim/commands';
@@ -107,7 +107,8 @@ describe("the Bloom's heart", () => {
 
   // The human proxy (#252): wards first, with its nests rallying there, but
   // never a ward too well held for its blob.
-  const wardOrders = (w: World) => {
+  /** Six seconds of the proxy's commands. */
+  const proxyOrders = (w: World) => {
     const proxy = new Proxy(0, { skill: 1 });
     const out: Command[] = [];
     // One step first, so the spatial grid holds the units.
@@ -117,12 +118,16 @@ describe("the Bloom's heart", () => {
       out.push(...cmds);
       step(w, cmds);
     }
+    return out;
+  };
+  const wardOrders = (w: World) => {
+    const out = proxyOrders(w);
     const wards = new Set(w.heart!.nests);
     return { moves: out.filter((c) => c.t === 'move' && wards.has(c.nest)), rallies: out.filter((c) => c.t === 'rally') };
   };
   it('the proxy marches on the nearest ward and rallies its nests there', () => {
     const w = arena();
-    units(w, 0, Kind.Dot, 60, 160, 160);
+    units(w, 0, Kind.Dot, WARD_BLOB + 5, 160, 160);
     const { moves, rallies } = wardOrders(w);
     expect(moves.length).toBeGreaterThan(0);
     const first = moves[0] as Extract<Command, { t: 'move' }>;
@@ -134,7 +139,7 @@ describe("the Bloom's heart", () => {
     // north-west means going round the bottom, past the east ward's distance.
     const wall = [{ x1: 330, y1: 0, x2: 330, y2: 820, r: 12 }, { x1: 330, y1: 820, x2: 470, y2: 820, r: 12 }, { x1: 470, y1: 820, x2: 470, y2: 380, r: 12 }];
     const w = arena('heart', 0, { walls: wall, fields: [], crystals: [] });
-    units(w, 0, Kind.Dot, 60, 160, 160);
+    units(w, 0, Kind.Dot, WARD_BLOB + 5, 160, 160);
     const crow = (id: number) => Math.hypot(w.nests[id].x - 170, w.nests[id].y - 180);
     expect(crow(0)).toBeLessThan(crow(1));
     const first = wardOrders(w).moves[0] as Extract<Command, { t: 'move' }>;
@@ -156,8 +161,23 @@ describe("the Bloom's heart", () => {
   it("the proxy leaves a ward it can't take", () => {
     const w = arena();
     for (const id of w.heart!.nests) units(w, NEUTRAL, Kind.Tank, 40, w.nests[id].x - 14, w.nests[id].y - 30);
-    units(w, 0, Kind.Dot, 60, 160, 160);
+    units(w, 0, Kind.Dot, WARD_BLOB + 5, 160, 160);
     expect(wardOrders(w).moves).toEqual([]);
+  });
+  // #274: at 45 a big starting army dove at a ward before it expanded, and
+  // in the army probe a bigger army won less often. Under WARD_BLOB it takes
+  // the open nest beside it first; past it, it marches on the nearest ward.
+  it('the proxy expands before it marches on the wards, until its blob passes WARD_BLOB', () => {
+    const firstGoal = (n: number) => {
+      const w = arena();
+      // A plain neutral nest (not a ward: the heart has already picked them) near the proxy.
+      w.nests.push({ ...w.nests[0], id: w.nests.length, x: 330, y: 160, rallyX: 330, rallyY: 160 });
+      units(w, 0, Kind.Dot, n, 160, 160);
+      const first = proxyOrders(w).find((c) => c.t === 'move') as Extract<Command, { t: 'move' }>;
+      return first.nest;
+    };
+    expect(firstGoal(WARD_BLOB - 15)).toBe(4);
+    expect(firstGoal(WARD_BLOB + 5)).toBe(0);
   });
 
   it('telegraphs its pulse, which hits what is inside its ring and nothing else', () => {

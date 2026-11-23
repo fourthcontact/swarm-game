@@ -30,8 +30,12 @@ import { inArmy, type Nest, type World } from '../sim/world';
 const HEART_GOAL = -2;
 /** blob size at which the proxy goes for a stronghold's citadel... */
 const CITADEL_BLOB = 60;
-/** blob size at which the proxy marches on the finale's wards, then the heart */
-const WARD_BLOB = 45;
+/**
+ * Blob size at which the proxy marches on the finale's wards, then the heart.
+ * At 45 a big starting army dove at a ward before it expanded, so a bigger
+ * army won less often; at 75 it expands first, like a player (#274).
+ */
+export const WARD_BLOB = 75;
 /** ...once it outnumbers the hostile units within CITADEL_R of it this many times over */
 const CITADEL_EDGE = 1.5;
 const CITADEL_R = 300;

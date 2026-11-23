@@ -45,7 +45,7 @@ export function supplyCap(w: World, f: number): number {
     nests++;
     levels += n.level - 1;
   }
-  const cap = capFor(nests, levels, escalation(w.tick)) + nests * (w.factions[f]?.mods.supplyPerNest ?? 0);
+  const cap = capFor(nests, levels, escalation(w.tick)) + extraSupply(w, f, nests);
   const hard = w.factions[f]?.unitCap ?? 0;
   return hard > 0 ? Math.min(cap, hard) : cap;
 }
@@ -53,6 +53,12 @@ export function supplyCap(w: World, f: number): number {
 /** How far a Bastion's turret and armor aura reach (its owner's mods stretch it). */
 export function bastionRange(w: World, n: Nest): number {
   return (BASTION.range + BASTION.rangePerLevel * (n.level - 1)) * w.factions[n.owner].mods.bastionRange;
+}
+
+/** Supply from the faction's mods: per nest held, plus a flat bonus (#274). */
+function extraSupply(w: World, f: number, nests: number): number {
+  const m = w.factions[f]?.mods;
+  return m ? nests * m.supplyPerNest + m.supplyBonus : 0;
 }
 
 function capFor(nests: number, levels: number, L: number): number {
@@ -72,7 +78,7 @@ export function updateNests(w: World): void {
   }
   const L = escalation(w.tick);
   for (let f = 0; f < NUM_FACTIONS; f++) {
-    capOf[f] = capFor(nestCount[f], levelCount[f], L) + nestCount[f] * (w.factions[f]?.mods.supplyPerNest ?? 0);
+    capOf[f] = capFor(nestCount[f], levelCount[f], L) + extraSupply(w, f, nestCount[f]);
     const hard = w.factions[f]?.unitCap ?? 0;
     if (hard > 0) capOf[f] = Math.min(capOf[f], hard);
   }

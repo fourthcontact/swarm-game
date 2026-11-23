@@ -7,6 +7,8 @@ import type { BattleReport } from '../../src/campaign/broods';
 import { LEVEL_SPAWN_MULT, NEST_KIND, NEST_SPAWN_MULT, NEUTRAL, TICK_HZ, UNIT_STATS } from '../../src/sim/constants';
 import { createWorld, type MatchSetup } from '../../src/sim/setup';
 import { step } from '../../src/sim/step';
+import { supplyCap } from '../../src/sim/nests';
+import { standingNests } from '../../src/sim/heart';
 import { inArmy, type World } from '../../src/sim/world';
 import { Proxy, type ProxyOptions } from '../../src/proxy/proxy';
 
@@ -26,6 +28,8 @@ export interface Job {
   cap: number;
   /** end the battle on this rule (the pool sets it only where early-check.ts passed it) */
   early?: Rule;
+  /** also record the human's supply and nests over the battle (army-probe.ts, #274) */
+  probe?: boolean;
 }
 
 /** A probe's job: `early` asks for the pool's rule, which it applies only where the check passed. */
@@ -51,6 +55,20 @@ export interface Result {
   decided: boolean;
   ticks: number;
   trace: Trace;
+  probe?: ProbeStats;
+}
+
+/** The human's side of a battle, for army-probe.ts (#274). */
+export interface ProbeStats {
+  /** seconds spent at or over the supply cap */
+  capped: number;
+  /** nests held at 1, 2 and 3 minutes */
+  nests: number[];
+  /** units the human's nests made */
+  spawned: number;
+  /** the finale's wards: how many fell, and when the first did (s, -1 if none) */
+  wards: number;
+  firstWard: number;
 }
 
 /**
@@ -110,11 +128,14 @@ export function playBattle(job: Job): Result {
   const proxy = new Proxy(job.human, job.proxy);
   const trace: Trace = { team: [], share: [] };
   let call: ReturnType<typeof callOf>;
+  const wards = w.heart?.nests.length ?? 0;
+  const probe: ProbeStats | undefined = job.probe ? { capped: 0, nests: [], spawned: 0, wards: 0, firstWard: -1 } : undefined;
   while (!w.over && w.tick < job.cap) {
     step(w, proxy.think(w));
     w.fx = [];
     w.deaths = [];
     if (w.tick % TICK_HZ) continue;
+    if (probe) sample(w, job.human, wards, probe);
     const l = lead(w);
     trace.team.push(l.team);
     trace.share.push(Math.floor(l.share * 100));
@@ -122,5 +143,16 @@ export function playBattle(job: Job): Result {
   }
   const decided = !!call;
   const won = call ? call.team === w.teamOf[job.human] : w.over && w.winnerTeam === w.teamOf[job.human];
-  return { won, capped: !w.over && !decided, report: battleReport(w, job.human, won), decided, ticks: w.tick, trace };
+  if (probe) probe.spawned = w.factions[job.human].stats.spawned;
+  return { won, capped: !w.over && !decided, report: battleReport(w, job.human, won), decided, ticks: w.tick, trace, ...(probe && { probe }) };
+}
+
+/** Once a second: the human's supply, nests and the wards fallen (probe jobs only). */
+function sample(w: World, f: number, wards: number, p: ProbeStats): void {
+  const s = w.tick / TICK_HZ;
+  if (w.unitCount[f] >= supplyCap(w, f)) p.capped++;
+  if (s === 60 || s === 120 || s === 180) p.nests.push(w.nests.filter((n) => n.owner === f && n.control >= 1).length);
+  if (!wards) return;
+  p.wards = wards - standingNests(w);
+  if (p.wards > 0 && p.firstWard < 0) p.firstWard = s;
 }

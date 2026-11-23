@@ -54,6 +54,8 @@ export interface FactionMods {
   bastionRange: number;
   /** extra supply per nest held */
   supplyPerNest: number;
+  /** flat extra supply, on top of the nests' (#274) */
+  supplyBonus: number;
   crystalRate: number;
   energyRate: number;
   /** capture speed at every nest */
@@ -125,6 +127,7 @@ export function defaultMods(): FactionMods {
     capitalLevel: 0,
     bastionRange: 1,
     supplyPerNest: 0,
+    supplyBonus: 0,
     crystalRate: 1,
     energyRate: 1,
     captureRate: 1,

@@ -30,6 +30,8 @@ import { inArmy, type Nest, type World } from '../sim/world';
 const HEART_GOAL = -2;
 /** blob size at which the proxy goes for a stronghold's citadel... */
 const CITADEL_BLOB = 60;
+/** blob size at which the proxy marches on the finale's wards, then the heart */
+const WARD_BLOB = 45;
 /** ...once it outnumbers the hostile units within CITADEL_R of it this many times over */
 const CITADEL_EDGE = 1.5;
 const CITADEL_R = 300;
@@ -128,6 +130,8 @@ export interface ProxyOptions {
   novaLocked?: boolean;
   /** blob size at which it goes for a stronghold's citadel (default CITADEL_BLOB; low = a rush) */
   citadelBlob?: number;
+  /** blob size at which it marches on the finale's wards and heart (default WARD_BLOB) */
+  wardBlob?: number;
 }
 
 type Mode = 'expand' | 'hold' | 'punish' | 'counter';
@@ -148,6 +152,7 @@ export class Proxy {
   private pushFrom = 0;
   private readonly novaLocked: boolean;
   private readonly citadelBlob: number;
+  private readonly wardBlob: number;
   /**
    * The tick think() last saw. Its periodic decisions fire when a multiple
    * of their period has passed since then, so a caller that steps several
@@ -212,6 +217,7 @@ export class Proxy {
     this.k = { ...knobsFor(opts.skill ?? 1), ...opts.knobs };
     this.novaLocked = !!opts.novaLocked;
     this.citadelBlob = opts.citadelBlob ?? CITADEL_BLOB;
+    this.wardBlob = opts.wardBlob ?? WARD_BLOB;
   }
 
   private hostile(w: World, o: number): boolean {
@@ -358,14 +364,14 @@ export class Proxy {
       // The Bloom's heart (campaign finale). It can't be hurt while a Bloom nest
       // stands (#252), so like a player, the blob takes the nearest ward first.
       const heart = heartSlot(w);
-      const ward = heart >= 0 && blob.length >= 45 ? this.nearestWard(w, bx, by, blob.length) : null;
+      const ward = heart >= 0 && blob.length >= this.wardBlob ? this.nearestWard(w, bx, by, blob.length) : null;
       if (ward) {
         this.march(w, blob, bx, by, mine, ward.x, ward.y, ward.id, out);
         this.mode = 'counter';
         this.upgrade(w, mine, army, out);
         return out;
       }
-      if (heart >= 0 && blob.length >= 45 && standingNests(w) === 0) {
+      if (heart >= 0 && blob.length >= this.wardBlob && standingNests(w) === 0) {
         this.march(w, blob, bx, by, mine, w.x[heart], w.y[heart], HEART_GOAL, out);
         this.mode = 'counter';
         this.upgrade(w, mine, army, out);

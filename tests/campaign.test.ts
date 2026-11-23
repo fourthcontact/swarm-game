@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CONQUEST_SHARE, LONE_WOLF, armyFor, bloomEvents, bloomLabel, nodeSetup, swarmScale } from '../src/campaign/battle';
+import { BROOD_PROD, CONQUEST_SHARE, LONE_WOLF, armyFor, broodProd, bloomEvents, bloomLabel, nodeSetup, swarmScale } from '../src/campaign/battle';
 import { COST, MAX_ROSTER, MILITIA, MIN_SIZE, SURVIVOR_CAP, UNLOCKS, WIN_GROWTH, settleBroods, type BattleReport, type Brood } from '../src/campaign/broods';
 import { DIFFICULTIES, RUN_DIFFICULTY, MAP_H, MAP_W, ahead, bloomGap, difficultyOf, inBloom, seedRadius, speedBloom, grow, heal, canStep, hops, maxFielded, moves, newRun, reachable, rerollCost, rerollOffer, resolveTurn, skipRecruit, skipReward, strainHomes, takeRecruit, takeReward, unlock, unlockCost, unlocked, type RunState } from '../src/campaign/run';
 import { REWARD, modsFor, offerable, rewardText, rollOffer } from '../src/campaign/rewards';
@@ -395,6 +395,34 @@ describe('broods', () => {
     expect(armyFor(run, run.fielded)).toEqual([MILITIA]);
     const s = nodeSetup(run, run.nodes[run.start].links[0], run.fielded);
     expect(s.players[0]).toMatchObject({ human: true, nestTypes: run.unlocks.nests, army: [MILITIA] });
+  });
+
+  it('a bigger fielded army spawns faster, a smaller one slower; the militia at 1 (#276)', () => {
+    const run = newRun('brood-prod', 0, 'swarm', 0);
+    const node = run.nodes[run.start].links[0];
+    const sized = (total: number) => {
+      for (const b of run.broods) b.size = Math.max(1, Math.round(total / run.broods.length));
+      return armyFor(run, run.fielded).reduce((a, b) => a + b.count, 0);
+    };
+    const spawn = () => createWorld(nodeSetup(run, node, run.fielded)).factions[run.color].mods.spawnRate;
+    const base = modsFor(run.perks, run.broods).spawnRate;
+    const at = (total: number) => 1 + BROOD_PROD.per * (sized(total) - BROOD_PROD.ref);
+    const typical = at(BROOD_PROD.ref);
+    expect(typical).toBeCloseTo(1, 1);
+    expect(broodProd(run, run.fielded)).toBeCloseTo(typical);
+    expect(spawn()).toBeCloseTo(base * typical);
+    const big = at(60);
+    expect(big).toBeGreaterThan(1.2);
+    expect(spawn()).toBeCloseTo(base * big);
+    sized(12);
+    expect(spawn()).toBeLessThan(base);
+    sized(300);
+    expect(broodProd(run, run.fielded)).toBe(BROOD_PROD.max);
+    sized(1);
+    expect(broodProd(run, run.fielded)).toBe(BROOD_PROD.min);
+    for (const b of run.broods) b.wounded = 1;
+    expect(broodProd(run, run.fielded)).toBe(1);
+    expect(spawn()).toBeCloseTo(base);
   });
 
   it('only broods that actually fought are settled: wounded ones in the pick sit out', () => {

@@ -38,9 +38,30 @@ export function armyFor(run: RunState, fielded: number[]): { kind: number; count
   return out.length ? out.map((b) => ({ kind: b.kind, count: Math.round(b.size * scale), vet: lone || veteran(b), brood: b.id })) : [MILITIA];
 }
 
+/**
+ * A brood's size counts (#276): your nests spawn faster the bigger the army
+ * you field, and slower below `ref`. The starting dots alone are a few percent
+ * of what fights, so without this, growing broods barely moved the odds.
+ * Measured from a typical army rather than from zero, so battles get no easier
+ * on average (army-probe `rel`, REF=32 PROD_PER=0.01).
+ */
+export const BROOD_PROD = { per: 0.01, ref: STRONGHOLD_ARMY, min: 0.7, max: 1.5 };
+
+/** Your nests' spawn speed for the army you field. The militia fights at 1, so a run with every brood wounded isn't pushed further down. */
+export function broodProd(run: RunState, fielded: number[]): number {
+  if (!fighters(run.broods, fielded, maxFielded(run)).length) return 1;
+  const { per, ref, min, max } = BROOD_PROD;
+  return Math.min(max, Math.max(min, 1 + per * (armySize(run, fielded) - ref)));
+}
+
 /** Nova stays locked in the sim until the run unlocks it (#154): the HUD's lock alone wouldn't stop a remote peer. */
 function lockNova(run: RunState, m: FactionMods): FactionMods {
   if (!run.unlocks.nova) m.lockedPowers |= POWER_LOCK.nova;
+  return m;
+}
+
+function withBroodProd(m: FactionMods, x: number): FactionMods {
+  m.spawnRate *= x;
   return m;
 }
 
@@ -87,7 +108,7 @@ export function nodeSetup(run: RunState, id: number, fielded: number[] = []): Ma
         human: true,
         army: armyFor(run, fielded),
         nestTypes: run.unlocks.nests,
-        mods: lockNova(run, modsFor(run.perks, fighters(run.broods, fielded, maxFielded(run)))),
+        mods: withBroodProd(lockNova(run, modsFor(run.perks, fighters(run.broods, fielded, maxFielded(run)))), broodProd(run, fielded)),
       },
       ...factions.slice(0, n.rivals).map((faction, i): PlayerSetup => {
         const personality = rng.pick(PERSONALITIES);

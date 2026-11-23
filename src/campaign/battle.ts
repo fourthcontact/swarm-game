@@ -40,18 +40,17 @@ export function armyFor(run: RunState, fielded: number[]): { kind: number; count
 
 /**
  * A brood's size counts (#276): your nests spawn faster the bigger the army
- * you field, and slower below `ref`. The starting dots alone are a few percent
- * of what fights, so without this, growing broods barely moved the odds.
- * Measured from a typical army rather than from zero, so battles get no easier
- * on average (army-probe `rel`, REF=32 PROD_PER=0.01).
+ * you field, past `ref`. The starting dots alone are a few percent of what
+ * fights, so without this, growing broods barely moved the odds. Smaller
+ * armies spawn at the usual speed: a slowdown below `ref` made new runs (24
+ * dots) lose more of their first battles.
  */
-export const BROOD_PROD = { per: 0.01, ref: STRONGHOLD_ARMY, min: 0.7, max: 1.5 };
+export const BROOD_PROD = { per: 0.01, ref: STRONGHOLD_ARMY, max: 1.5 };
 
-/** Your nests' spawn speed for the army you field. The militia fights at 1, so a run with every brood wounded isn't pushed further down. */
+/** Your nests' spawn speed for the army you field (the militia's is below `ref`, so 1). */
 export function broodProd(run: RunState, fielded: number[]): number {
-  if (!fighters(run.broods, fielded, maxFielded(run)).length) return 1;
-  const { per, ref, min, max } = BROOD_PROD;
-  return Math.min(max, Math.max(min, 1 + per * (armySize(run, fielded) - ref)));
+  const { per, ref, max } = BROOD_PROD;
+  return Math.min(max, Math.max(1, 1 + per * (armySize(run, fielded) - ref)));
 }
 
 /** Nova stays locked in the sim until the run unlocks it (#154): the HUD's lock alone wouldn't stop a remote peer. */

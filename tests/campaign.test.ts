@@ -397,7 +397,7 @@ describe('broods', () => {
     expect(s.players[0]).toMatchObject({ human: true, nestTypes: run.unlocks.nests, army: [MILITIA] });
   });
 
-  it('a bigger fielded army spawns faster, a smaller one slower; the militia at 1 (#276)', () => {
+  it('a fielded army past BROOD_PROD.ref spawns faster; smaller ones and the militia at the usual speed (#276)', () => {
     const run = newRun('brood-prod', 0, 'swarm', 0);
     const node = run.nodes[run.start].links[0];
     const sized = (total: number) => {
@@ -406,20 +406,16 @@ describe('broods', () => {
     };
     const spawn = () => createWorld(nodeSetup(run, node, run.fielded)).factions[run.color].mods.spawnRate;
     const base = modsFor(run.perks, run.broods).spawnRate;
-    const at = (total: number) => 1 + BROOD_PROD.per * (sized(total) - BROOD_PROD.ref);
-    const typical = at(BROOD_PROD.ref);
-    expect(typical).toBeCloseTo(1, 1);
-    expect(broodProd(run, run.fielded)).toBeCloseTo(typical);
-    expect(spawn()).toBeCloseTo(base * typical);
+    const at = (total: number) => Math.max(1, 1 + BROOD_PROD.per * (sized(total) - BROOD_PROD.ref));
+    expect(at(BROOD_PROD.ref)).toBeCloseTo(1, 1);
+    expect(spawn()).toBeCloseTo(base * broodProd(run, run.fielded));
     const big = at(60);
     expect(big).toBeGreaterThan(1.2);
     expect(spawn()).toBeCloseTo(base * big);
     sized(12);
-    expect(spawn()).toBeLessThan(base);
+    expect(spawn()).toBeCloseTo(base);
     sized(300);
     expect(broodProd(run, run.fielded)).toBe(BROOD_PROD.max);
-    sized(1);
-    expect(broodProd(run, run.fielded)).toBe(BROOD_PROD.min);
     for (const b of run.broods) b.wounded = 1;
     expect(broodProd(run, run.fielded)).toBe(1);
     expect(spawn()).toBeCloseTo(base);

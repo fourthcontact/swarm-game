@@ -7,17 +7,20 @@
 // and depth, brood attrition, biomass and reward picks.
 // Usage: npx vite-node scripts/run-probe.ts [runs] [skill] [first seed]
 //   PACK=swarm|wall|raid (default: rotate)   DIFFICULTY=gentle|standard|hard|brutal   PROXY='{...}' knob overrides
+//   CAMP=old|army: the camp policy (#96; scripts/balance/runs.ts, default old)
 import type { PackId } from '../src/campaign/broods';
 import type { RunDifficulty } from '../src/campaign/run';
 import type { ProxyKnobs } from '../src/proxy/proxy';
 import { BudgetError, Pool } from './balance/pool';
 import { playRun, type Battle, type RunOutcome } from './balance/runs';
+import { campLines, campPolicy } from './balance/summary';
 
 const runs = Number(process.argv[2] ?? 10);
 const skill = Number(process.argv[3] ?? 1);
 const firstSeed = Number(process.argv[4] ?? 0);
 const knobs: Partial<ProxyKnobs> = process.env.PROXY ? JSON.parse(process.env.PROXY) : {};
 const DIFFICULTY = (process.env.DIFFICULTY ?? 'standard') as RunDifficulty;
+const camp = campPolicy();
 const PACKS: PackId[] = process.env.PACK ? [process.env.PACK as PackId] : ['swarm', 'wall', 'raid'];
 
 // ---- runs ----------------------------------------------------------------------
@@ -28,7 +31,7 @@ try {
   await Promise.all(
     Array.from({ length: runs }, async (_, r) => {
       const seed = firstSeed + r;
-      const o = await playRun(pool, seed, { pack: PACKS[seed % PACKS.length], difficulty: DIFFICULTY, skill, knobs, early: true });
+      const o = await playRun(pool, seed, { pack: PACKS[seed % PACKS.length], difficulty: DIFFICULTY, skill, knobs, early: true, camp });
       outcomes.push(o);
       const bs = o.battles;
       console.log(
@@ -95,10 +98,8 @@ group('difficulty × rivals', (b) => `d${b.difficulty} ×${b.rivals}`);
 group('depth', (b) => `depth ${b.depth}`);
 console.log(`\nrewards taken: ${Object.entries(rewards).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ')}`);
 console.log(`camp: ${Object.entries(bought).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ')}`);
-// The camp economy (#96): spending should still be a choice in the last third.
-const camps = outcomes.flatMap((o) => o.camps);
-const thirds = [0, 1, 2].map((k) => camps.filter((c) => Math.min(2, Math.floor(c.t * 3)) === k));
-console.log(`camp economy by third of the run: ${thirds.map((cs) => `banked ${avg(cs.map((c) => c.banked)).toFixed(0)}, could buy everything ${pct(cs.filter((c) => c.all).length, cs.length)}`).join(' | ')}`);
+// The camp economy (#96): spending should still be a choice in the last third (#276: grows buy production).
+console.log(`camp policy ${camp}:\n${campLines(outcomes).join('\n')}`);
 // Broods (#134): wins that leave a brood at the minimum, and rescues swapped in with the roster full.
 console.log(`broods after a win: ${pct(sum((o) => o.atMin), sum((o) => o.settled))} small, at most MIN_SIZE + 2 (${sum((o) => o.atMin)} of ${sum((o) => o.settled)}); ${sum((o) => o.stuck)} broods small three wins running; rescues with the roster full: ${sum((o) => o.swaps)} swapped in, ${sum((o) => o.passed)} let go`);
 // Nest unlocks (#133): how many wins it takes to own every nest type.

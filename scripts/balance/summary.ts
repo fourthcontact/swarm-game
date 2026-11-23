@@ -1,7 +1,10 @@
 // Run reports for the surrogate and its validation (#68): win rates against
 // the targets, where runs are lost, run length, the biomass curve, warlords.
 import type { RunDifficulty } from '../../src/campaign/run';
+import { campLines, type CampPolicy } from './camp';
 import type { RunOutcome } from './runs';
+
+export { campLines };
 
 /** #68's targets: run win rate by difficulty and proxy skill (skill 1 ≈ a strong player). */
 export const TARGETS: Record<RunDifficulty, Record<string, number>> = {
@@ -30,6 +33,13 @@ export const runMinutes = (os: RunOutcome[]) => os.map((o) => o.battles.reduce((
 const pct = (x: number) => `${(100 * x).toFixed(0)}%`;
 const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : NaN);
 
+/** The probes' camp policy (#96): CAMP=old|army, default old. */
+export const campPolicy = (): CampPolicy => {
+  const c = process.env.CAMP ?? 'old';
+  if (c !== 'old' && c !== 'army') throw new Error(`CAMP=${c}: old or army`);
+  return c;
+};
+
 /** A few lines on one difficulty × skill's runs. */
 export function summarize(os: RunOutcome[], difficulty: RunDifficulty, skill: number): string[] {
   const target = TARGETS[difficulty][skill];
@@ -47,5 +57,6 @@ export function summarize(os: RunOutcome[], difficulty: RunDifficulty, skill: nu
     `  run minutes (battles): mean ${avg(mins).toFixed(0)}, median ${(mins[mins.length >> 1] ?? NaN).toFixed(0)}, 10–90% ${(mins[Math.floor(mins.length * 0.1)] ?? NaN).toFixed(0)}–${(mins[Math.floor(mins.length * 0.9)] ?? NaN).toFixed(0)}`,
     `  biomass after each battle: ${curve.join(' ')}`,
     `  warlords per run: broken ${lords('broken')}, eaten ${lords('eaten')}, fought ${lords('fought')}, avoided ${lords('avoided')}`,
+    ...campLines(os),
   ];
 }

@@ -38,9 +38,29 @@ export function armyFor(run: RunState, fielded: number[]): { kind: number; count
   return out.length ? out.map((b) => ({ kind: b.kind, count: Math.round(b.size * scale), vet: lone || veteran(b), brood: b.id })) : [MILITIA];
 }
 
+/**
+ * A brood's size counts (#276): your nests spawn faster the bigger the army
+ * you field, past `ref`. The starting dots alone are a few percent of what
+ * fights, so without this, growing broods barely moved the odds. Smaller
+ * armies spawn at the usual speed: a slowdown below `ref` made new runs (24
+ * dots) lose more of their first battles.
+ */
+export const BROOD_PROD = { per: 0.01, ref: STRONGHOLD_ARMY, max: 1.5 };
+
+/** Your nests' spawn speed for the army you field (the militia's is below `ref`, so 1). */
+export function broodProd(run: RunState, fielded: number[]): number {
+  const { per, ref, max } = BROOD_PROD;
+  return Math.min(max, Math.max(1, 1 + per * (armySize(run, fielded) - ref)));
+}
+
 /** Nova stays locked in the sim until the run unlocks it (#154): the HUD's lock alone wouldn't stop a remote peer. */
 function lockNova(run: RunState, m: FactionMods): FactionMods {
   if (!run.unlocks.nova) m.lockedPowers |= POWER_LOCK.nova;
+  return m;
+}
+
+function withBroodProd(m: FactionMods, x: number): FactionMods {
+  m.spawnRate *= x;
   return m;
 }
 
@@ -87,7 +107,7 @@ export function nodeSetup(run: RunState, id: number, fielded: number[] = []): Ma
         human: true,
         army: armyFor(run, fielded),
         nestTypes: run.unlocks.nests,
-        mods: lockNova(run, modsFor(run.perks, fighters(run.broods, fielded, maxFielded(run)))),
+        mods: withBroodProd(lockNova(run, modsFor(run.perks, fighters(run.broods, fielded, maxFielded(run)))), broodProd(run, fielded)),
       },
       ...factions.slice(0, n.rivals).map((faction, i): PlayerSetup => {
         const personality = rng.pick(PERSONALITIES);

@@ -175,6 +175,9 @@ Each node turns into a `MatchSetup` (`src/sim/setup.ts`) plus an objective. Obje
 ## Broods
 Persistent named squads, each of one unit kind: Swarmers, Shields, Spears or Raiders.
 - **Choose before a battle:** you pick up to 3 broods to field. They become your starting army, which replaces `START_UNITS` with a per-player starting army in `MatchSetup`.
+- **Size sets production (#276):** your nests spawn faster the bigger the army you field: ×(1 + 0.01 per dot above 32), up to ×1.5 (`BROOD_PROD` in `src/campaign/battle.ts`). Smaller armies and the militia spawn at the usual speed.
+  - Without it, a brood's 18–56 starting dots were a few percent of the 800–1800 units a battle spawns, and a bigger army barely moved the odds, so growing broods wasn't worth the biomass.
+  - It's measured from a typical army, not from zero, so most battles get only a little easier. A slowdown below 32 was tried and dropped: new runs start at 24 dots and lost more of their first battles. `scripts/army-probe.ts` has the numbers; the other ideas it tried (all-veteran broods, slower production for everyone) didn't help.
 - **A brood is a strain:** its mutations apply to every unit of its kind you spawn that battle, not just the starting dots.
   - A match spawns hundreds of units from nests, so upgrades that only touched the opening army would fade within a minute or two.
   - Strains also tie into routing: Spears need a Spire on the map, and previews show each map's nest mix.

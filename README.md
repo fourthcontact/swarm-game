@@ -143,7 +143,7 @@ IDS=spikes,echo N=8 npx vite-node scripts/reward-probe.ts   # win-rate change pe
 npx vite-node scripts/balance/early-check.ts            # is the early-decision rule safe to use on this code?
 npx vite-node scripts/surrogate-probe.ts 1000           # 1000 surrogate runs per difficulty × skill, in seconds
 npx vite-node scripts/balance/validate.ts               # surrogate vs 36 full runs per difficulty
-npx vite-node scripts/army-probe.ts base,dive 40        # army size vs win rate per node kind, with supply and ward stats (#274)
+npx vite-node scripts/army-probe.ts base,vet 40         # army size vs win rate per node kind, with supply and ward stats (#274); variants for #276 (SLOW)
 ```
 - **The run surrogate** (`scripts/balance/model.ts`) uses the real run logic and policies, but draws each battle's outcome from a model fitted to a fixed battle panel.
   - The panel crosses node kind, depth band, army size and bot shift, about 1500 battles taken from snapshots of real runs.

@@ -5,10 +5,16 @@
 //   base    the game as it is
 //   cap60   SUPPLY.base 60: the supply cap out of the way
 //   dive    the proxy marches on the finale's wards at 45 dots, as before #274 (it now waits for WARD_BLOB)
+// and ideas from #276 for making a brood's size count, set up through the
+// battle's MatchSetup only (no sim change):
+//   prod    your production × (1 + PROD_PER × army)   PROD_PER=0.01
+//   vet     every brood unit starts as a veteran (more HP)
+//   slow    every player's production × SLOW, so the opening army is a bigger share   SLOW=0.6
 // Per kind and size: win %, seconds at the supply cap, nests at 1/2/3 min,
 // units the nests made, and for the finale the wards taken and when.
 // Usage: npx vite-node scripts/army-probe.ts [variants] [battles per kind]
-//   (default base,cap60,dive and 40)   WORKERS=8 BUDGET_MIN=120
+//   (default base,prod,vet,slow and 40)   WORKERS=8 BUDGET_MIN=120
+import type { MatchSetup } from '../src/sim/setup';
 import { nodeSetup } from '../src/campaign/battle';
 import type { RunState } from '../src/campaign/run';
 import { armyOf, snapshots, type CellKind, type Snapshot } from './balance/model';
@@ -16,7 +22,9 @@ import { CAP, type Result } from './balance/battle';
 import { BudgetError, Pool } from './balance/pool';
 import { pickBroods } from './balance/runs';
 
-const VARIANTS = (process.argv[2] ?? 'base,cap60,dive').split(',');
+const VARIANTS = (process.argv[2] ?? 'base,prod,vet,slow').split(',');
+const PROD_PER = Number(process.env.PROD_PER ?? 0.01);
+const SLOW = Number(process.env.SLOW ?? 0.6);
 const PER_KIND = Number(process.argv[3] ?? 40);
 const SIZES = [0.5, 0.8, 1.1, 1.4];
 /** finale: every band; the others: the last two, where armies are big */
@@ -33,6 +41,14 @@ interface Row {
   snap: string;
   army: number;
   r: Result;
+}
+
+/** The #276 variants' changes to the battle nodeSetup makes. */
+function adjust(variant: string, setup: MatchSetup, army: number): void {
+  const me = setup.players[0];
+  if (variant === 'prod') me.prod = (me.prod ?? 1) * (1 + PROD_PER * army);
+  if (variant === 'vet') me.army = me.army?.map((a) => (a.brood === undefined ? a : { ...a, vet: true }));
+  if (variant === 'slow') for (const p of setup.players) p.prod = (p.prod ?? 1) * SLOW;
 }
 
 function pick(snaps: Snapshot[]): Snapshot[] {
@@ -59,6 +75,7 @@ async function measure(pool: Pool, variant: string, s: Snapshot, factor: number,
   if (now > 0) for (const b of run.broods) if (fielded.includes(b.id)) b.size = Math.max(1, Math.round((b.size * target) / now));
   const army = armyOf(run, fielded);
   const setup = nodeSetup(run, s.id, fielded);
+  adjust(variant, setup, army);
   const me = setup.players[0];
   const r = await pool.battle({ setup, human: me.faction, proxy: { skill: 1, novaLocked: !run.unlocks.nova, ...(variant === 'dive' && { wardBlob: 45 }) }, cap: CAP, probe: true });
   return { variant, kind: s.kind, factor, snap: `${s.run}:${s.id}`, army, r };
@@ -92,6 +109,8 @@ function report(rows: Row[]): void {
         if (lo.r.won && !hi.r.won) down++;
       }
       console.log(`${SIZES[0]}× → ${SIZES[SIZES.length - 1]}×: ${up} losses become wins, ${down} wins become losses`);
+      const pct = (factor: number) => (100 * of.filter((r) => r.factor === factor && r.r.won).length) / of.filter((r) => r.factor === factor).length;
+      console.log(`slope ${(pct(SIZES[SIZES.length - 1]) - pct(SIZES[0])).toFixed(0)} points, mean ${((100 * of.filter((r) => r.r.won).length) / of.length).toFixed(0)}%`);
     }
 }
 

@@ -3,6 +3,7 @@
  * map (move, preview, watch the Bloom advance) and the after-battle debrief.
  */
 
+import { whyNot } from './whynot';
 import type { AudioEngine } from '../audio/engine';
 import { mountCreatures } from '../art/creature';
 import { BLOOM, BloomField, MapFx, battleMapCanvas, cardMap, bloomGapView, sigilCanvas, drawIcon, glyph, nodeRadius, tendrils, wobble } from './runmapfx';
@@ -1081,7 +1082,7 @@ export function runMap(
       }
       if (n.checkpoint) rows.push(`<dt>Checkpoint</dt><dd>${run.checkpointUsed ? 'Already used' : 'Reach it to save the run here, once'}</dd>`);
     }
-    const status = n.id === run.at ? 'Your swarm is here, at its camp.' : dead ? 'Lost to the Bloom.' : isSealed ? (canReopen ? retryNote(run, n.id).replace(' from the map', '') : '🔒 You lost here: sealed. Only a step away can you pay to fight here again.') : taken ? 'Taken: march through without a battle.' : canGo ? '' : reachable(run)?.has(n.id) === false ? 'Out of reach: your swarm has moved past it.' : 'Not next to your swarm.';
+    const status = n.id === run.at ? 'Your swarm is here, at its camp.' : dead ? 'Lost to the Bloom.' : isSealed ? (canReopen ? retryNote(run, n.id).replace(' from the map', '') : '🔒 You lost here: sealed. Only a step away can you pay to fight here again.') : taken ? 'Taken: march through without a battle.' : canGo ? '' : whyNot(run, n.id);
     const verb = !canGo ? null : needsBattle(run, n.id) ? 'Fight' : 'March';
     panel.classList.remove('wide');
     panel.innerHTML = `

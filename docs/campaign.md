@@ -17,9 +17,14 @@ Inspiration: *Bad North*. Its runs are about 2–3 hours of 2–3 minute island 
 One seed generates everything: map, battles and reward offers. The run is deterministic and shareable.
 
 - **Organic layout:**
-  - About 18–24 territory nodes scattered with Poisson-disk sampling over a wide, irregular region.
-  - Each node links to its natural neighbours (a relative-neighbourhood graph), so routes branch and rejoin, and you can move sideways as well as forward. It is not a grid.
-  - You start near one edge; the Bloom's heart (★) lies across the map.
+  - 24–31 territory nodes scattered with Poisson-disk sampling over a wide, irregular region.
+  - Each node links to its natural neighbours (a Gabriel graph), so routes branch and rejoin. It is not a grid.
+  - You start at the left edge; the Bloom's heart (★) is the furthest node across the map.
+  - A new battle must lie ahead of you, within 70° of the line to the heart (#128). You can march back onto nodes you took.
+  - So every node can be reached (#273):
+    - nodes are only placed where the start sees them ahead;
+    - every node has a link out toward the heart (#128) and a link in from a node it lies ahead of;
+    - a node that could only get its way in by a crossing link is moved instead. A crossing link is the last resort, after 24 moves; it didn't happen in 2000 test seeds.
 - **A turn:**
   1. Move to an adjacent node and fight its battle.
   2. The Bloom advances.
@@ -257,7 +262,7 @@ Every new sound is procedural WebAudio in `src/audio/engine.ts`, on the score's 
   - whether any reward is a must-pick.
 - **Reward-impact probe:** an A/B for each item, which sets the rarity tiers.
 - **Beatable tests:** every battle type gets one, the same pattern as `tests/tutorial.test.ts`.
-- **Map tests:** every generated run map is connected, and the heart is reachable before the Bloom closes the route.
+- **Map tests:** every generated run map is connected, every node can be reached from the start, and the heart is reachable before the Bloom closes the route.
 
 ## Build phases
 Each phase ships something playable and includes its own sounds.

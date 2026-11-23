@@ -14,6 +14,7 @@
 // units the nests made, and for the finale the wards taken and when.
 // Usage: npx vite-node scripts/army-probe.ts [variants] [battles per kind]
 //   (default base,prod,vet,slow and 40)   WORKERS=8 BUDGET_MIN=120
+import { defaultMods } from '../src/sim/mods';
 import type { MatchSetup } from '../src/sim/setup';
 import { nodeSetup } from '../src/campaign/battle';
 import type { RunState } from '../src/campaign/run';
@@ -46,9 +47,14 @@ interface Row {
 /** The #276 variants' changes to the battle nodeSetup makes. */
 function adjust(variant: string, setup: MatchSetup, army: number): void {
   const me = setup.players[0];
-  if (variant === 'prod') me.prod = (me.prod ?? 1) * (1 + PROD_PER * army);
+  // A human's production ignores PlayerSetup.prod (bots only), so the player's goes through mods.spawnRate.
+  const spawn = (x: number) => (me.mods = { ...(me.mods ?? defaultMods()), spawnRate: (me.mods?.spawnRate ?? 1) * x });
+  if (variant === 'prod') spawn(1 + PROD_PER * army);
   if (variant === 'vet') me.army = me.army?.map((a) => (a.brood === undefined ? a : { ...a, vet: true }));
-  if (variant === 'slow') for (const p of setup.players) p.prod = (p.prod ?? 1) * SLOW;
+  if (variant === 'slow') {
+    spawn(SLOW);
+    for (const p of setup.players.slice(1)) p.prod = (p.prod ?? 1) * SLOW;
+  }
 }
 
 function pick(snaps: Snapshot[]): Snapshot[] {

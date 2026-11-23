@@ -8,6 +8,8 @@
 // and ideas from #276 for making a brood's size count, set up through the
 // battle's MatchSetup only (no sim change):
 //   prod    your production × (1 + PROD_PER × army)   PROD_PER=0.01
+//   rel     your production × (1 + PROD_PER × (army − REF)), clamped to 0.7–1.5; REF=band
+//           is the band's typical army, or a fixed number of dots
 //   vet     every brood unit starts as a veteran (more HP)
 //   slow    every player's production × SLOW, so the opening army is a bigger share   SLOW=0.6
 // Per kind and size: win %, seconds at the supply cap, nests at 1/2/3 min,
@@ -26,6 +28,7 @@ import { pickBroods } from './balance/runs';
 const VARIANTS = (process.argv[2] ?? 'base,prod,vet,slow').split(',');
 const PROD_PER = Number(process.env.PROD_PER ?? 0.01);
 const SLOW = Number(process.env.SLOW ?? 0.6);
+const REF = process.env.REF ?? 'band';
 const PER_KIND = Number(process.argv[3] ?? 40);
 const SIZES = [0.5, 0.8, 1.1, 1.4];
 /** finale: every band; the others: the last two, where armies are big */
@@ -45,11 +48,12 @@ interface Row {
 }
 
 /** The #276 variants' changes to the battle nodeSetup makes. */
-function adjust(variant: string, setup: MatchSetup, army: number): void {
+function adjust(variant: string, setup: MatchSetup, army: number, typical: number): void {
   const me = setup.players[0];
   // A human's production ignores PlayerSetup.prod (bots only), so the player's goes through mods.spawnRate.
   const spawn = (x: number) => (me.mods = { ...(me.mods ?? defaultMods()), spawnRate: (me.mods?.spawnRate ?? 1) * x });
   if (variant === 'prod') spawn(1 + PROD_PER * army);
+  if (variant === 'rel') spawn(Math.min(1.5, Math.max(0.7, 1 + PROD_PER * (army - (REF === 'band' ? typical : Number(REF))))));
   if (variant === 'vet') me.army = me.army?.map((a) => (a.brood === undefined ? a : { ...a, vet: true }));
   if (variant === 'slow') {
     spawn(SLOW);
@@ -81,7 +85,7 @@ async function measure(pool: Pool, variant: string, s: Snapshot, factor: number,
   if (now > 0) for (const b of run.broods) if (fielded.includes(b.id)) b.size = Math.max(1, Math.round((b.size * target) / now));
   const army = armyOf(run, fielded);
   const setup = nodeSetup(run, s.id, fielded);
-  adjust(variant, setup, army);
+  adjust(variant, setup, army, typical);
   const me = setup.players[0];
   const r = await pool.battle({ setup, human: me.faction, proxy: { skill: 1, novaLocked: !run.unlocks.nova, ...(variant === 'dive' && { wardBlob: 45 }) }, cap: CAP, probe: true });
   return { variant, kind: s.kind, factor, snap: `${s.run}:${s.id}`, army, r };

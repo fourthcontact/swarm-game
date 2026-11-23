@@ -4,24 +4,19 @@
 // under a few variants that test the suspected causes:
 //   base    the game as it is
 //   cap60   SUPPLY.base 60: the supply cap out of the way
-//   expand  the proxy expands before it marches on the finale's wards (wardBlob 75)
-//   bonus   the army you bring adds to your supply (cap = army + one nest's)
-//   scaled  bonus, and the rivals start bigger with more supply in step
+//   dive    the proxy marches on the finale's wards at 45 dots, as before #274 (it now waits for WARD_BLOB)
 // Per kind and size: win %, seconds at the supply cap, nests at 1/2/3 min,
 // units the nests made, and for the finale the wards taken and when.
 // Usage: npx vite-node scripts/army-probe.ts [variants] [battles per kind]
-//   (default base,cap60,expand,bonus,scaled and 40)   WORKERS=8 BUDGET_MIN=120
-import { defaultMods } from '../src/sim/mods';
-import { SUPPLY, Kind } from '../src/sim/constants';
-import { START_UNITS, type MatchSetup } from '../src/sim/setup';
+//   (default base,cap60,dive and 40)   WORKERS=8 BUDGET_MIN=120
 import { nodeSetup } from '../src/campaign/battle';
 import type { RunState } from '../src/campaign/run';
-import { BANDS, armyOf, snapshots, type CellKind, type Snapshot } from './balance/model';
+import { armyOf, snapshots, type CellKind, type Snapshot } from './balance/model';
 import { CAP, type Result } from './balance/battle';
 import { BudgetError, Pool } from './balance/pool';
 import { pickBroods } from './balance/runs';
 
-const VARIANTS = (process.argv[2] ?? 'base,cap60,expand,bonus,scaled').split(',');
+const VARIANTS = (process.argv[2] ?? 'base,cap60,dive').split(',');
 const PER_KIND = Number(process.argv[3] ?? 40);
 const SIZES = [0.5, 0.8, 1.1, 1.4];
 /** finale: every band; the others: the last two, where armies are big */
@@ -38,20 +33,6 @@ interface Row {
   snap: string;
   army: number;
   r: Result;
-}
-
-/** Variant setup changes, applied to the battle nodeSetup makes. */
-function adjust(variant: string, setup: MatchSetup, army: number, typical: number): void {
-  if (variant !== 'bonus' && variant !== 'scaled') return;
-  const me = setup.players[0];
-  me.mods!.supplyBonus += Math.max(0, army - SUPPLY.base);
-  if (variant !== 'scaled') return;
-  const scale = Math.max(1, army / typical);
-  for (const p of setup.players.slice(1)) {
-    p.army = [{ kind: Kind.Dot, count: Math.round(START_UNITS * scale) }];
-    p.mods = { ...(p.mods ?? defaultMods()) };
-    p.mods.supplyBonus += Math.round(SUPPLY.base * (scale - 1));
-  }
 }
 
 function pick(snaps: Snapshot[]): Snapshot[] {
@@ -78,9 +59,8 @@ async function measure(pool: Pool, variant: string, s: Snapshot, factor: number,
   if (now > 0) for (const b of run.broods) if (fielded.includes(b.id)) b.size = Math.max(1, Math.round((b.size * target) / now));
   const army = armyOf(run, fielded);
   const setup = nodeSetup(run, s.id, fielded);
-  adjust(variant, setup, army, typical);
   const me = setup.players[0];
-  const r = await pool.battle({ setup, human: me.faction, proxy: { skill: 1, novaLocked: !run.unlocks.nova, ...(variant === 'expand' && { wardBlob: 75 }) }, cap: CAP, probe: true });
+  const r = await pool.battle({ setup, human: me.faction, proxy: { skill: 1, novaLocked: !run.unlocks.nova, ...(variant === 'dive' && { wardBlob: 45 }) }, cap: CAP, probe: true });
   return { variant, kind: s.kind, factor, snap: `${s.run}:${s.id}`, army, r };
 }
 

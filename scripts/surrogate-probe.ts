@@ -7,18 +7,20 @@
 // band, run minutes, the biomass curve and warlords.
 // Usage: npx vite-node scripts/surrogate-probe.ts [runs] [first seed]
 //   DIFFICULTY=gentle,standard (default: all four)   SKILLS=1,0.5 (default: those with targets)
+//   CAMP=old|army: the camp policy (#96; scripts/balance/runs.ts, default old)
 import { IMPACT_FILE, type ImpactTable } from './balance/impact';
 import type { PackId } from '../src/campaign/broods';
 import type { RunDifficulty } from '../src/campaign/run';
 import { buildPanel, surrogateFight } from './balance/model';
 import { BudgetError, Pool } from './balance/pool';
 import { playRun } from './balance/runs';
-import { TARGETS, summarize } from './balance/summary';
+import { TARGETS, campPolicy, summarize } from './balance/summary';
 
 const runs = Number(process.argv[2] ?? 1000);
 const firstSeed = Number(process.argv[3] ?? 0);
 const DIFFS = (process.env.DIFFICULTY?.split(',') ?? Object.keys(TARGETS)) as RunDifficulty[];
 const PACKS: PackId[] = ['swarm', 'wall', 'raid'];
+const camp = campPolicy();
 
 const pool = await Pool.open();
 let panel;
@@ -40,7 +42,7 @@ const t0 = performance.now();
 for (const difficulty of DIFFS) {
   const skills = process.env.SKILLS ? process.env.SKILLS.split(',').map(Number) : Object.keys(TARGETS[difficulty]).map(Number).sort((a, b) => b - a);
   for (const skill of skills) {
-    const os = await Promise.all(Array.from({ length: runs }, (_, r) => playRun(fight, firstSeed + r, { pack: PACKS[(firstSeed + r) % PACKS.length], difficulty, skill })));
+    const os = await Promise.all(Array.from({ length: runs }, (_, r) => playRun(fight, firstSeed + r, { pack: PACKS[(firstSeed + r) % PACKS.length], difficulty, skill, camp })));
     console.log(summarize(os, difficulty, skill).join('\n'));
   }
 }

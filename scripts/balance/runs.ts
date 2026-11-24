@@ -5,14 +5,16 @@
 // (model.ts). The run logic stays on the main thread, so many runs share the
 // pool at once.
 import { nodeSetup } from '../../src/campaign/battle';
-import { COST, KIND_NEST, MIN_SIZE, UNLOCKS, fit, type PackId, type Unlock } from '../../src/campaign/broods';
+import { MIN_SIZE, UNLOCKS, type PackId } from '../../src/campaign/broods';
 import { REWARD, STRAIN_SLOTS, TIER_WEIGHT } from '../../src/campaign/rewards';
 import { type RunDifficulty, bloomStrength, canRetry, endRun, grow, heal, hops, maxFielded, moves, needsBattle, newRun, payRetry, pressure, resolveTurn, sealedMoves, stranded, wayOn, skipRecruit, takeRecruit, takeReward, unlock, unlockCost, unlocked, warlordFighting, type RunState } from '../../src/campaign/run';
 import type { ProxyKnobs } from '../../src/proxy/proxy';
+import { campVisit, pickBroods, spend, type Camp, type CampPolicy } from './camp';
 import { CAP, classOf, type BattleClass, type Fight, type Result } from './battle';
 import type { Pool } from './pool';
 
 export { CAP, type Fight };
+export * from './camp';
 
 
 export interface Battle {
@@ -77,21 +79,6 @@ export interface RunOutcome {
   passed: number;
 }
 
-export interface Camp {
-  t: number;
-  banked: number;
-  /** the bank covered everything a player could want here (wishCost) */
-  all: boolean;
-}
-
-/** Everything a player could want at camp (#96): heal every wounded brood, every unlock left, one grow per brood. */
-export function wishCost(run: RunState): number {
-  const heals = run.broods.filter((b) => b.wounded).length * COST.heal;
-  const unlocks = [...UNLOCKS, 'nova' as Unlock].filter((u) => !unlocked(run, u)).reduce((s, u) => s + unlockCost(run, u), 0);
-  const grows = run.broods.reduce((s, b) => s + COST.grow(b), 0);
-  return heals + unlocks + grows;
-}
-
 export interface RunOptions {
   pack: PackId;
   difficulty: RunDifficulty;
@@ -99,18 +86,14 @@ export interface RunOptions {
   knobs?: Partial<ProxyKnobs>;
   /** ask the pool for early decisions */
   early?: boolean;
+  /**
+   * The camp policy (#96): 'old' grows only the biggest brood, near its cap;
+   * 'army' knows #276 and grows the fielded broods to ARMY_GOAL first. Default 'old'.
+   */
+  camp?: CampPolicy;
 }
 
 // ---- policies ----------------------------------------------------------------
-
-/** The broods to field: the biggest fit ones. */
-export function pickBroods(run: RunState): number[] {
-  return run.broods
-    .filter(fit)
-    .sort((a, b) => b.size - a.size || a.id - b.id)
-    .slice(0, maxFielded(run))
-    .map((b) => b.id);
-}
 
 /**
  * Next node: one step along the shortest open route to the heart; ties go to easier, then rescue, nodes.
@@ -158,27 +141,6 @@ export function pickReward(run: RunState): string | null {
   return null;
 }
 
-/** Camp: heal when short of fit broods, unlock what our broods' kinds need (then Nova), then grow caps. */
-export function spend(run: RunState, bought: Record<string, number>): void {
-  // Like a player heeding the camp's warning (#253): keep a retry's price when it's the only way on.
-  const keep = wayOn(run).reserve;
-  run.biomass -= keep;
-  try {
-    shop(run, bought);
-  } finally {
-    run.biomass += keep;
-  }
-}
-
-function shop(run: RunState, bought: Record<string, number>): void {
-  const buy = (what: string, ok: boolean) => ok && (bought[what] = (bought[what] ?? 0) + 1);
-  for (const b of run.broods) if (b.wounded && run.broods.filter(fit).length < maxFielded(run)) buy('heal', heal(run, b.id));
-  const wanted: Unlock[] = [...new Set(run.broods.map((b) => KIND_NEST[b.kind]))].filter((t) => UNLOCKS.includes(t));
-  for (const u of [...wanted, 'nova' as Unlock, ...UNLOCKS]) if (!unlocked(run, u) && run.biomass >= unlockCost(run, u) + 10) buy(`unlock ${u}`, unlock(run, u));
-  const big = [...run.broods].sort((a, b) => b.size - a.size)[0];
-  while (big && big.size >= big.cap - 2 && run.biomass >= COST.grow(big) + 30 && grow(run, big.id)) buy('grow', true);
-}
-
 // ---- a run ---------------------------------------------------------------------
 
 export const poolFight = (pool: Pool): Fight => (job) => pool.battle(job);
@@ -201,14 +163,17 @@ export async function playRun(fight: Fight | Pool, seed: number, o: RunOptions):
     const picked = pickReward(run);
     if (picked) out.rewards.push(picked);
     run.offer = undefined;
-    if (run.turn > 0) out.camps.push({ t: Math.min(1, run.nodes[run.at].depth / out.far), banked: run.biomass, all: run.biomass >= wishCost(run) });
-    spend(run, out.bought);
+    const camp = run.turn > 0 ? campVisit(run, Math.min(1, run.nodes[run.at].depth / out.far)) : undefined;
+    if (camp) out.camps.push(camp);
+    spend(run, out.bought, o.camp, camp?.spent);
     // Spending can leave no way on (#253): the run ends as it would on the map.
     if (stranded(run) && (endRun(run, 'bloom', 0), run.status !== 'active')) break;
     if (out.allNests === undefined && UNLOCKS.every((u) => unlocked(run, u))) out.allNests = out.battles.filter((b) => b.won).length;
     const id = pickMove(run);
     // A sealed node is paid for before it's fought (#253); pickMove only offers ones it can pay for.
+    const pre = run.biomass;
     if (run.sealed?.includes(id) && !payRetry(run, id)) throw new Error(`probe ${seed}: can't pay to reopen node ${id}`);
+    if (camp && pre > run.biomass) camp.spent.retry = (camp.spent.retry ?? 0) + pre - run.biomass;
     const node = run.nodes[id];
     if (!needsBattle(run, id)) {
       resolveTurn(run, id, null, [], 0);

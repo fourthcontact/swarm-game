@@ -150,6 +150,7 @@ npx vite-node scripts/army-probe.ts base,vet 40         # army size vs win rate 
   - The model's win odds use the node's bot level and rivals, the Bloom's pressure and strength, the army, the proxy's skill, and each node's own hardness, which retries share.
   - Measuring the panel takes about 6 min on fresh code. After that the surrogate gives win rates per difficulty, losses by depth, run minutes, the biomass curve and warlords in seconds.
   - `validate.ts` checks the surrogate against full runs. Re-run it whenever the battle code changes.
+- **The camp** (`scripts/balance/camp.ts`, #96): a simple policy buys at camp between battles. `CAMP=army` (for `run-probe` and `surrogate-probe`) grows the fielded broods until they reach 82 dots, where #276's production bonus tops out, then unlocks. The default `CAMP=old` grows only the biggest brood, near its cap. Both probes print the camp economy by third of the run: biomass banked, how often it could buy everything or nothing, the fielded caps, and what it spent.
 - These play their battles on a pool of worker threads (`scripts/balance/pool.ts`).
 - Results are cached in `.balance-cache/` (gitignored). The cache key covers the job and a fingerprint of the bundled battle code plus the `SUPPLY`/`BOT`/`PERS`/`CROWD`/`CHOKE` overrides, so any change to the sim, campaign or proxy starts afresh.
 - Environment options:

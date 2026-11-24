@@ -250,8 +250,8 @@ export interface RunState {
   tries?: Record<string, number>;
   /** nodes you lost a battle at (#253): sealed until you pay to fight there again */
   sealed?: number[];
-  /** the battle under way (#266), saved as it starts: a run resumed with it set left that battle, which counts as a retreat */
-  fighting?: { node: number; fielded: number[]; turn: number };
+  /** the battle under way (#266), saved as it starts: a run resumed with it set left that battle (inBattle.ts) */
+  fighting?: { node: number; fielded: number[]; turn: number; report?: BattleReport };
 }
 
 // ---- generation -----------------------------------------------------------
@@ -908,31 +908,6 @@ export function payRetry(run: RunState, id: number): boolean {
   run.tries = { ...run.tries, [id]: (run.tries?.[id] ?? 0) + 1 };
   run.sealed = run.sealed!.filter((n) => n !== id);
   return true;
-}
-
-/** A battle starts (#266): mark it on the run, so leaving the page mid-battle can't undo it. */
-export function startBattle(run: RunState, id: number, fielded: number[]): void {
-  run.fighting = { node: id, fielded: [...fielded], turn: run.turn };
-}
-
-/** The battle a resumed run left mid-fight, if any. A marker from an earlier turn is stale and ignored. */
-export const abandoned = (run: RunState): RunState['fighting'] | null =>
-  run.status === 'active' && run.fighting && run.fighting.turn === run.turn ? run.fighting : null;
-
-/** No one is left on the field when you walk away (#266): the battle you left settles as a retreat. */
-export const RETREAT: BattleReport = { won: false, survivors: [0, 0, 0, 0], nests: 0, seconds: 0 };
-
-/**
- * Settle a battle the page closed on (#266) as a retreat: wounds, salvage, the
- * Bloom's turn, and the node sealed until a retry is paid for. Null if there was none.
- */
-export function settleAbandoned(run: RunState, now = Date.now()): TurnResult | null {
-  const f = abandoned(run);
-  if (!f) {
-    delete run.fighting;
-    return null;
-  }
-  return resolveTurn(run, f.node, RETREAT, f.fielded, now);
 }
 
 /** Sealed nodes a step from anywhere you can still reach: ones a retry could open. */

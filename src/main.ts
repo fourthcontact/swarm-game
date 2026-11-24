@@ -19,7 +19,7 @@ import { PERSONALITIES } from './sim/ai/bot';
 import { Kind, MAX_UNITS, NEUTRAL, TICK_HZ } from './sim/constants';
 import type { MatchSetup } from './sim/setup';
 import { spawnUnit } from './sim/world';
-import { endRun, mapBloom, needsBattle, newRun, payRetry, resolveTurn, stranded, type RunNode, type RunState, type TurnResult } from './campaign/run';
+import { abandoned, endRun, mapBloom, needsBattle, newRun, payRetry, resolveTurn, settleAbandoned, startBattle, stranded, type RunNode, type RunState, type TurnResult } from './campaign/run';
 import { battleType, briefingFor, briefsSeen, markBriefSeen, resetBriefs, type BriefLord } from './campaign/briefings';
 import type { BattleReport } from './campaign/broods';
 import { battleReport, nodeSetup, warlordOf } from './campaign/battle';
@@ -490,6 +490,14 @@ class App {
 
   private showRunMap(run: RunState, intro: MapIntro | null = null, tour: TourKind | null = null): void {
     if (this.game) this.showMenu();
+    // The page closed on a battle (#266): it counts as a retreat, so a reload is no free retry.
+    const from = run.bloom.time;
+    const fight = abandoned(run);
+    const left = settleAbandoned(run);
+    if (fight && left) {
+      this.saveRunState(run);
+      return this.showTurnDebrief(run, fight.node, false, from, left, true);
+    }
     // Out of ways on (#253): the camp can spend the last retry's price, so check here as well as after a turn.
     if (stranded(run)) {
       const restored = endRun(run, 'bloom');
@@ -627,6 +635,9 @@ class App {
    */
   private fightRunBattle(run: RunState, id: number, fielded: number[]): void {
     const node = run.nodes[id];
+    // Saved before the battle starts (#266): leaving the page now settles it as a retreat on resume.
+    startBattle(run, id, fielded);
+    this.saveRunState(run);
     this.startGame(nodeSetup(run, id, fielded), { scenario: `campaign: ${node.kind}`, goal: false });
     this.run = { state: run, node: id, fielded };
     if (!run.unlocks.nova) this.game!.lock('nova', 'Unlock Nova at the camp');
@@ -699,14 +710,19 @@ class App {
     const from = r.state.bloom.time;
     const res = resolveTurn(r.state, r.node, report, r.fielded);
     this.saveRunState(r.state);
+    this.showTurnDebrief(r.state, r.node, report.won, from, res);
+  }
+
+  /** A battle's turn is settled: its sounds, then the debrief. `left`: the page closed mid-battle (#266). */
+  private showTurnDebrief(run: RunState, node: number, won: boolean, from: number, res: TurnResult, left = false): void {
     this.runSounds(res);
-    if (r.state.status === 'won') this.sfx.victory();
-    else if (r.state.status === 'lost') this.sfx.defeat();
+    if (run.status === 'won') this.sfx.victory();
+    else if (run.status === 'lost') this.sfx.defeat();
     this.setModal(
-      runDebrief(r.state, r.state.nodes[r.node], report.won, res, {
-        next: () => this.showRunMap(r.state, this.runIntro(from, res)),
-        hub: () => this.leaveRun(r.state),
-      }),
+      runDebrief(run, run.nodes[node], won, res, {
+        next: () => this.showRunMap(run, this.runIntro(from, res)),
+        hub: () => this.leaveRun(run),
+      }, left),
     );
   }
 

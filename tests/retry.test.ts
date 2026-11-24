@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BattleReport } from '../src/campaign/broods';
-import { RETRY, RUN_DIFFICULTY, canRetry, canStep, moves, newRun, payRetry, reachable, resolveTurn, retriesLeft, retryCost, sealedMoves, stranded, wayOn, type RunState } from '../src/campaign/run';
+import { RETREAT, RETRY, RUN_DIFFICULTY, abandoned, canRetry, canStep, moves, newRun, payRetry, reachable, resolveTurn, retriesLeft, retryCost, sealedMoves, settleAbandoned, startBattle, stranded, wayOn, type RunState } from '../src/campaign/run';
 
 const LOSS: BattleReport = { won: false, survivors: [3, 0, 0, 0], nests: 1, seconds: 240 };
 const WIN: BattleReport = { won: true, survivors: [30, 12, 12, 12], nests: 6, seconds: 200 };
@@ -202,5 +202,62 @@ describe('fighting a lost battle again (#253)', () => {
     lose(run, id);
     run.status = 'lost';
     expect(canRetry(run, id)).toBe(false);
+  });
+});
+
+describe('leaving the page mid-battle (#266)', () => {
+  /** What a reload does: the run as last saved. */
+  const reload = (run: RunState): RunState => JSON.parse(JSON.stringify(run)) as RunState;
+
+  it('settles the battle as a retreat on resume: wounds, salvage, a turn, and the node sealed', () => {
+    const run = rich();
+    const id = moves(run)[0];
+    startBattle(run, id, run.fielded);
+    const back = reload(run);
+    expect(abandoned(back)).toEqual({ node: id, fielded: run.fielded, turn: run.turn });
+    // The same turn as a retreat from the pause menu.
+    const retreat = rich();
+    resolveTurn(retreat, id, RETREAT, retreat.fielded, 0);
+    const res = settleAbandoned(back, 0);
+    expect(res).not.toBeNull();
+    expect(back.fighting).toBeUndefined();
+    expect(back.sealed).toEqual([id]);
+    expect(moves(back)).not.toContain(id);
+    expect({ ...back, updated: 0 }).toEqual({ ...retreat, updated: 0 });
+    expect(res!.events.every((e) => e.what === 'wounded' || e.what === 'died')).toBe(true);
+    // Settled once: resuming again changes nothing.
+    expect(settleAbandoned(back, 0)).toBeNull();
+  });
+
+  it('a battle that ends in the page clears the marker', () => {
+    for (const report of [WIN, LOSS]) {
+      const run = rich();
+      const id = moves(run)[0];
+      startBattle(run, id, run.fielded);
+      resolveTurn(run, id, report, run.fielded, 0);
+      expect(run.fighting).toBeUndefined();
+      expect(abandoned(run)).toBeNull();
+    }
+  });
+
+  it('ignores a stale marker, and older saves without one', () => {
+    const run = rich();
+    expect(abandoned(run)).toBeNull();
+    expect(settleAbandoned(run, 0)).toBeNull();
+    run.fighting = { node: moves(run)[0], fielded: run.fielded, turn: run.turn - 1 };
+    const turn = run.turn;
+    expect(abandoned(run)).toBeNull();
+    expect(settleAbandoned(run, 0)).toBeNull();
+    expect(run.turn).toBe(turn);
+    expect(run.fighting).toBeUndefined();
+  });
+
+  it('leaving your last brood\'s battle ends the run, as a loss would', () => {
+    const run = rich();
+    run.checkpointUsed = true;
+    for (const b of run.broods) b.size = 5;
+    startBattle(run, moves(run)[0], run.broods.map((b) => b.id));
+    settleAbandoned(run, 0);
+    expect(run).toMatchObject({ status: 'lost', lostTo: 'broods' });
   });
 });

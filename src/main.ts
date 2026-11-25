@@ -28,7 +28,8 @@ import { playtestMenu } from './ui/playtest';
 import { fortressGrid } from './ui/fortressGrid';
 import { mapGrid } from './ui/mapGrid';
 import { FORTIFY } from './sim/fortify';
-import { deleteRun, finishRun, listRuns, loadHistory, saveRun } from './campaign/store';
+import { deleteRun, finishRun, listRuns, loadHistory, loadRun, saveRun } from './campaign/store';
+import { abandoned, noteBattle, settleAbandoned, settledElsewhere, startBattle } from './campaign/inBattle';
 import { recruitPick, rewardPick, runDebrief, runHub, runMap, starterPick, type MapIntro } from './ui/campaign';
 import { runHowTo } from './ui/runtour';
 import { loadGuide, saveGuide, wantsCampHint, wantsTour, type TourKind } from './campaign/tour';
@@ -227,7 +228,7 @@ class App {
   /** difficulty of the current quick match, so "New map" rolls another one */
   private quick: number | null = null;
   /** the campaign run and node the current battle belongs to */
-  private run: { state: RunState; node: number; fielded: number[] } | null = null;
+  private run: { state: RunState; node: number; fielded: number[]; noted?: boolean } | null = null;
   /** ghost cursor acting out the current tutorial step */
   private demoOverlay: DemoOverlay | null = null;
   private demoKey = '';
@@ -273,6 +274,8 @@ class App {
     document.addEventListener('visibilitychange', () => {
       const hidden = document.visibilityState === 'hidden';
       if (hidden) this.saveRec('unload', false);
+      // A phone may never come back (#266): a run battle left now counts as a retreat, with the heart damage dealt.
+      if (hidden && !this.game?.result) this.noteRunBattle(false);
       // Hidden, the music can't keep time: sleep, and wake (or recover from an interruption) on return.
       this.sfx.setHidden(hidden);
       // In a room match, a hidden page's seat is away at once (#164); back, it's ours again. A phone that runs
@@ -490,6 +493,15 @@ class App {
 
   private showRunMap(run: RunState, intro: MapIntro | null = null, tour: TourKind | null = null): void {
     if (this.game) this.showMenu();
+    // The page closed on a battle (#266): it counts as a retreat (or as it ended, if decided), so a reload is no free retry.
+    const from = run.bloom.time;
+    const fight = abandoned(run);
+    const left = settleAbandoned(run);
+    if (fight && left) {
+      this.saveRunState(run);
+      const won = !!fight.report?.won;
+      return this.showTurnDebrief(run, fight.node, won, from, left, !won);
+    }
     // Out of ways on (#253): the camp can spend the last retry's price, so check here as well as after a turn.
     if (stranded(run)) {
       const restored = endRun(run, 'bloom');
@@ -627,6 +639,9 @@ class App {
    */
   private fightRunBattle(run: RunState, id: number, fielded: number[]): void {
     const node = run.nodes[id];
+    // Saved before the battle starts (#266): leaving the page now settles it as a retreat on resume.
+    startBattle(run, id, fielded);
+    this.saveRunState(run);
     this.startGame(nodeSetup(run, id, fielded), { scenario: `campaign: ${node.kind}`, goal: false });
     this.run = { state: run, node: id, fielded };
     if (!run.unlocks.nova) this.game!.lock('nova', 'Unlock Nova at the camp');
@@ -684,7 +699,19 @@ class App {
     const r = this.run;
     if (!r) return;
     this.run = null;
+    // Another tab settled this battle meanwhile (#266): keep its result, not this one.
+    const saved = r.state.id.startsWith(PLAYTEST) ? null : loadRun(r.state.id);
+    if (settledElsewhere(saved, r.state)) return this.showRunMap(saved!);
     this.resolveRunBattle(r, report);
+  }
+
+  /** Keep how a run battle stands on the saved run (#266), for a page closed before its debrief. */
+  private noteRunBattle(won: boolean): void {
+    const r = this.run;
+    if (!r || r.noted) return;
+    noteBattle(r.state, this.battleReport(won));
+    this.saveRunState(r.state);
+    r.noted = won || !!this.game?.result;
   }
 
   /** The run ended on the map (#253): no way on, so the Bloom takes it. */
@@ -699,14 +726,19 @@ class App {
     const from = r.state.bloom.time;
     const res = resolveTurn(r.state, r.node, report, r.fielded);
     this.saveRunState(r.state);
+    this.showTurnDebrief(r.state, r.node, report.won, from, res);
+  }
+
+  /** A battle's turn is settled: its sounds, then the debrief. `left`: the page closed mid-battle (#266). */
+  private showTurnDebrief(run: RunState, node: number, won: boolean, from: number, res: TurnResult, left = false): void {
     this.runSounds(res);
-    if (r.state.status === 'won') this.sfx.victory();
-    else if (r.state.status === 'lost') this.sfx.defeat();
+    if (run.status === 'won') this.sfx.victory();
+    else if (run.status === 'lost') this.sfx.defeat();
     this.setModal(
-      runDebrief(r.state, r.state.nodes[r.node], report.won, res, {
-        next: () => this.showRunMap(r.state, this.runIntro(from, res)),
-        hub: () => this.leaveRun(r.state),
-      }),
+      runDebrief(run, run.nodes[node], won, res, {
+        next: () => this.showRunMap(run, this.runIntro(from, res)),
+        hub: () => this.leaveRun(run),
+      }, left),
     );
   }
 
@@ -2109,6 +2141,8 @@ class App {
       if (this.netMenu === 'pause' && (this.match?.session.status?.resumeIn ?? -1) >= 0) this.closeNetMenu();
       if (this.netMenu) this.updateNetNote();
       if (g.result) this.saveRec(g.result, true);
+      // Decided (#266): saved now, as the debrief waits out the victory pause.
+      if (g.result && this.run && !this.run.noted) this.noteRunBattle(g.result === 'victory');
       this.hud?.update(g, dt);
       this.hud?.syncPending(g);
       this.updateBanner(g);

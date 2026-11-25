@@ -1439,7 +1439,7 @@ function lordText(run: RunState, res: TurnResult): string {
   return items.length ? `<ul class="brood-events warlord-events">${items.join('')}</ul>` : '';
 }
 
-export function runDebrief(run: RunState, node: RunNode, won: boolean, res: TurnResult, h: { next: () => void; hub: () => void }): HTMLDivElement {
+export function runDebrief(run: RunState, node: RunNode, won: boolean, res: TurnResult, h: { next: () => void; hub: () => void }, left = false): HTMLDivElement {
   const over = run.status !== 'active';
   const restored = res.checkpoint === 'restored';
   const title = restored
@@ -1475,6 +1475,7 @@ export function runDebrief(run: RunState, node: RunNode, won: boolean, res: Turn
       <div class="card brief run-debrief ${run.status === 'won' || (won && !over) ? 'win' : 'lose'}">
         <div class="eyebrow">${esc(run.seedText)} · turn ${run.turn}</div>
         <h2>${title}</h2>
+        ${left ? '<p class="hint">You left mid-battle: it counts as a retreat.</p>' : ''}
         <p>${text}</p>
         ${foes.length && !restored ? rivalStrip(foes, true, won ? 'beaten' : '') : ''}
         ${restored ? '' : lordText(run, res)}

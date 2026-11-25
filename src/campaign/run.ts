@@ -250,6 +250,8 @@ export interface RunState {
   tries?: Record<string, number>;
   /** nodes you lost a battle at (#253): sealed until you pay to fight there again */
   sealed?: number[];
+  /** the battle under way (#266), saved as it starts: a run resumed with it set left that battle (inBattle.ts) */
+  fighting?: { node: number; fielded: number[]; turn: number; report?: BattleReport };
 }
 
 // ---- generation -----------------------------------------------------------
@@ -737,6 +739,8 @@ export function resolveTurn(run: RunState, id: number, report: BattleReport | nu
   const res: TurnResult = { fresh: [], events: [], biomass: 0, warlords: [] };
   // Before the turn changes anything: whose ground this battle was on.
   const lord = report ? warlordFighting(run, id) : undefined;
+  // Whatever ends the battle settles it (#266).
+  delete run.fighting;
   run.turn++;
   run.updated = now;
   if (report) {

@@ -63,7 +63,7 @@ import { FACTION_HEX } from '../content/factions';
 import { DIFFICULTY_NAMES } from '../sim/ai/bot';
 import { isMobile } from './mobile';
 import { RUN_SCREEN } from './cover';
-import { lossCause } from '../campaign/defeat';
+import { lossCause, startDifficulty } from '../campaign/defeat';
 
 
 const SIZE_LABEL = { small: 'Small', medium: 'Medium', large: 'Large' } as const;
@@ -1438,7 +1438,7 @@ export const EVENT_TEXT: Record<BroodEvent['what'], (e: BroodEvent) => string> =
 };
 
 /** What happened to warlords this turn: a domain you broke, a stronghold the Bloom ate. */
-function lordText(run: RunState, res: TurnResult): string {
+export function lordText(run: RunState, res: TurnResult): string {
   const items = res.warlords.map(({ id, what }) => {
     const w = run.warlords![id];
     const name = `<b style="color:${FACTION_HEX[w.faction]}">♛ ${esc(w.name)}</b>`;
@@ -1519,16 +1519,13 @@ const LAST_DIFFICULTY = 'swarm.runDifficulty';
 /** `preset`: start on this difficulty, not the last one picked (a new run from the defeat screen, #271). */
 export function starterPick(seed: string, h: { pick: (p: PackId, d: RunDifficulty) => void; back: () => void }, preset?: RunDifficulty): HTMLDivElement {
   const ids = Object.keys(PACKS) as PackId[];
-  let difficulty: RunDifficulty = 'standard';
-  if (preset) difficulty = preset;
-  else {
-    try {
-      const last = localStorage.getItem(LAST_DIFFICULTY) as RunDifficulty | null;
-      if (last && DIFFICULTIES.includes(last)) difficulty = last;
-    } catch {
-      /* storage unavailable: Standard */
-    }
+  let stored: string | null = null;
+  try {
+    stored = localStorage.getItem(LAST_DIFFICULTY);
+  } catch {
+    /* storage unavailable: Standard */
   }
+  let difficulty = startDifficulty(preset, stored);
   const m = el(`
     <div class="screen modal">
       <div class="card hub">

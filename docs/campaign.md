@@ -188,7 +188,7 @@ Persistent named squads, each of one unit kind: Swarmers, Shields, Spears or Rai
 - **The run ends** when you have no broods left to field, or no way on: the heart is out of reach, and no sealed node in reach can be reopened, with the biomass you have or could still earn in a battle in reach (#253). The map checks this too, and so does closing the camp, since spending can leave you short of a retry's price. The camp warns you first. The checkpoint saves you once.
 - **The defeat screen** (#271): a lost run gets a full screen (`src/ui/defeat.ts`), not a debrief card.
   - The run map fills it: the Bloom rolls over your camp and your swarm dims out. With reduced motion, only the last frame.
-  - It says why the run ended (your last brood, or the Bloom closing the way on) and what the last battle did to your broods.
+  - It says why the run ended (your last brood, or the Bloom closing the way on), what the last battle did to your broods and warlords, and any biomass it salvaged.
   - The run in numbers (`src/campaign/defeat.ts`): difficulty, seed, turns, battles won and lost, biomass gathered, the broods lost by name, warlords broken, and how many hops from the heart you got.
   - **New run** (a new seed) and **Same seed again** open the swarm pick with the run's difficulty already chosen. **Campaign** goes back to the hub. A playtest run only goes back.
 
@@ -260,7 +260,7 @@ Every new sound is procedural WebAudio in `src/audio/engine.ts`, on the score's 
   - The hub lists them with seed, depth, broods, last played, and a small map thumbnail.
   - You can **load** (resume), **delete** (with a confirm) or **start a new one**.
 - **History:** past runs (won or lost) are listed with their seeds, plus a seed field to replay a run.
-- **Run history on the run** (#271): `gathered` (biomass earned from battles, spending aside) and `fallen` (broods that died). A checkpoint restore keeps both. Older saves have neither, so the defeat screen shows a dash and a count.
+- **Run history on the run** (#271): `gathered` (biomass earned from battles, spending aside) and `fallen` (broods that died). Both start with the run: a run from an older build doesn't start them partway, and its defeat screen shows dashes. A checkpoint restore keeps `gathered`, and takes the broods it brings back off `fallen`.
 - **Robustness:** each run lives under its own versioned storage key, so one bad save can't break the others.
 
 ## Testing

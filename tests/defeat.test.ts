@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { BattleReport } from '../src/campaign/broods';
-import { defeatStats, lossCause } from '../src/campaign/defeat';
+import { defeatChoices, defeatStats, lossCause, startDifficulty } from '../src/campaign/defeat';
+import { PLAYTEST } from '../src/campaign/playtest';
 import { moves, newRun, resolveTurn, type RunState } from '../src/campaign/run';
 
 const WIN: BattleReport = { won: true, survivors: [30, 12, 12, 12], nests: 6, seconds: 200 };
@@ -44,11 +45,29 @@ describe('the defeat screen (#271)', () => {
     expect(lossCause(run)).toMatch(/^No way on/);
   });
 
-  it('an older save, without the run history, shows a dash and a count', () => {
+  it('a run from an older build, without the history, shows dashes, not guesses', () => {
     const run = lostRun();
     delete run.gathered;
     delete run.fallen;
     expect(stat(run, 'Biomass gathered')).toBe('—');
-    expect(stat(run, 'Broods lost')).toBe(`${run.nextBrood - run.broods.length}`);
+    expect(stat(run, 'Broods lost')).toBe('—');
+  });
+
+  it('offers the campaign, the same seed and a new seed, both on the lost run’s difficulty; a playtest only goes back', () => {
+    const run = lostRun();
+    expect(defeatChoices(run)).toEqual([
+      { a: 'hub', label: 'Campaign' },
+      { a: 'seed', label: 'Same seed again', seed: 'defeat', difficulty: 'hard' },
+      { a: 'again', label: 'New run', primary: true, seed: null, difficulty: 'hard' },
+    ]);
+    run.id = `${PLAYTEST}x`;
+    expect(defeatChoices(run)).toEqual([{ a: 'hub', label: 'Campaign' }]);
+  });
+
+  it('the swarm pick starts on the difficulty asked for, over the last one picked', () => {
+    expect(startDifficulty('hard', 'gentle')).toBe('hard');
+    expect(startDifficulty(undefined, 'gentle')).toBe('gentle');
+    expect(startDifficulty(undefined, 'nonsense')).toBe('standard');
+    expect(startDifficulty(undefined, null)).toBe('standard');
   });
 });

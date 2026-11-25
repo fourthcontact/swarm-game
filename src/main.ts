@@ -19,7 +19,7 @@ import { PERSONALITIES } from './sim/ai/bot';
 import { Kind, MAX_UNITS, NEUTRAL, TICK_HZ } from './sim/constants';
 import type { MatchSetup } from './sim/setup';
 import { spawnUnit } from './sim/world';
-import { difficultyOf, endRun, mapBloom, needsBattle, newRun, payRetry, resolveTurn, stranded, type RunDifficulty, type RunNode, type RunState, type TurnResult } from './campaign/run';
+import { endRun, mapBloom, needsBattle, newRun, payRetry, resolveTurn, stranded, type RunDifficulty, type RunNode, type RunState, type TurnResult } from './campaign/run';
 import { defeatScreen } from './ui/defeat';
 import { battleType, briefingFor, briefsSeen, markBriefSeen, resetBriefs, type BriefLord } from './campaign/briefings';
 import type { BattleReport } from './campaign/broods';
@@ -729,24 +729,10 @@ class App {
     this.showDefeat(run, { fresh: [], events: [], biomass: 0, warlords: [] });
   }
 
-  /** A lost run's defeat screen (#271), with the music darkened under it. A playtest only goes back. */
+  /** A lost run's defeat screen (#271), with the music darkened under it (after setModal, which clears it). */
   private showDefeat(run: RunState, res: TurnResult, left = false): void {
-    const d = difficultyOf(run);
-    const real = !run.id.startsWith(PLAYTEST);
-    this.setModal(
-      defeatScreen(
-        run,
-        res,
-        {
-          again: real ? () => this.startRun(randomSeed(), d) : undefined,
-          sameSeed: real ? () => this.startRun(run.seedText, d) : undefined,
-          hub: () => this.leaveRun(run),
-        },
-        left,
-      ),
-    );
+    this.setModal(defeatScreen(run, res, { start: (seed, d) => this.startRun(seed, d), hub: () => this.leaveRun(run) }, left));
     this.sfx.defeat();
-    // After setModal, which clears it.
     this.sfx.setBloom(1);
   }
 

@@ -2,7 +2,8 @@
  * What the defeat screen says about a lost run (#271): why it ended, and the run in numbers.
  * Pure, so tests can read it without a DOM; the screen itself is ui/defeat.ts.
  */
-import { RUN_DIFFICULTY, difficultyOf, hops, type RunState } from './run';
+import { PLAYTEST } from './playtest';
+import { DIFFICULTIES, RUN_DIFFICULTY, difficultyOf, hops, type RunDifficulty, type RunState } from './run';
 
 /** Why the run ended, in a sentence. */
 export function lossCause(run: RunState): string {
@@ -19,12 +20,13 @@ export interface DefeatStat {
   value: string;
 }
 
-/** The run in numbers. Older saves don't record biomass gathered or who fell: a dash, or a count. */
+/** The run in numbers. Runs from older builds don't record biomass gathered or who fell: a dash. */
 export function defeatStats(run: RunState): DefeatStat[] {
   const won = run.log.filter((l) => l.won).length;
   const lost = run.log.length - won;
   const lords = run.warlords ?? [];
-  const fallen = run.fallen ? run.fallen.map((f) => f.name).join(', ') || 'none' : `${Math.max(0, run.nextBrood - run.broods.length)}`;
+  // An older run kept no record: a dash, not a guess (broods released or waiting to join would skew a count).
+  const fallen = run.fallen ? run.fallen.map((f) => f.name).join(', ') || 'none' : '—';
   const stats: DefeatStat[] = [
     { label: 'Difficulty', value: RUN_DIFFICULTY[difficultyOf(run)].name },
     { label: 'Seed', value: run.seedText },
@@ -43,4 +45,27 @@ function howFar(run: RunState): string {
   const d = hops(run.nodes, run.heart)[run.at];
   if (d === 0) return 'reached the heart';
   return d > 0 ? `${d} hop${d === 1 ? '' : 's'} from the heart` : '—';
+}
+
+/** A way out of the defeat screen. `seed`: the run to start (null: a new seed), on the lost run's difficulty. */
+export interface DefeatChoice {
+  a: 'hub' | 'seed' | 'again';
+  label: string;
+  primary?: boolean;
+  seed?: string | null;
+  difficulty?: RunDifficulty;
+}
+
+/** Back to the campaign, and two ways to try again on the same difficulty. A playtest only goes back. */
+export function defeatChoices(run: RunState): DefeatChoice[] {
+  const hub: DefeatChoice = { a: 'hub', label: 'Campaign' };
+  if (run.id.startsWith(PLAYTEST)) return [hub];
+  const difficulty = difficultyOf(run);
+  return [hub, { a: 'seed', label: 'Same seed again', seed: run.seedText, difficulty }, { a: 'again', label: 'New run', primary: true, seed: null, difficulty }];
+}
+
+/** The difficulty the swarm pick starts on: the one asked for (from the defeat screen), else the last one picked. */
+export function startDifficulty(preset: RunDifficulty | undefined, stored: string | null): RunDifficulty {
+  if (preset) return preset;
+  return stored && (DIFFICULTIES as string[]).includes(stored) ? (stored as RunDifficulty) : 'standard';
 }

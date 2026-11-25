@@ -680,15 +680,15 @@ button.crown.on { background: rgba(255, 209, 102, 0.16); }
   padding: 6px 14px;
   border-radius: 4px;
   font-size: 14px;
-  white-space: nowrap;
   max-width: 100%;
+  text-align: center;
   animation: tin 0.2s ease-out;
   transition: opacity 0.5s, transform 0.5s;
 }
 .toast.out { opacity: 0; transform: translateY(-6px); }
 @keyframes tin { from { opacity: 0; transform: translateY(6px); } }
-/* Phones: long toasts wrap instead of running off both edges (#267). */
-body.mobile .toast { white-space: normal; text-align: center; font-size: 13px; }
+/* Long toasts wrap inside the column instead of running off the edges (#267). */
+body.mobile .toast { font-size: 13px; }
 
 .nestcard {
   position: absolute;
@@ -1486,8 +1486,9 @@ body.mobile.land .warlord-chip small { font-size: 10px; }
 
 /* Overlays: in the middle column. */
 body.mobile.land .coach { left: var(--midl); right: var(--midr); width: auto; max-width: 520px; margin: 0 auto; transform: none; }
-body.mobile.land .toasts { top: calc(48px + var(--st)); left: var(--midx); width: var(--midw); }
+body.mobile.land .toasts { top: calc(48px + var(--st)); left: var(--midx); width: var(--midw, calc(100% - 24px)); }
 body.mobile.land .hud.has-siege .toasts, body.mobile.land .hud.has-lord .toasts { top: calc(92px + var(--st)); }
+/* No :not(.has-lord) here, unlike desktop: the warlord chip is in the left rail, not under the heart bar. */
 body.mobile.land .hud.has-heart .toasts { top: var(--hearttoast, calc(108px + var(--st))); }
 /* Domination (#239): the key strip shares the player strip's row, so the top bar is no taller than in Conquest. */
 body.mobile.land .hud.has-keys .hud-top { display: grid; grid-template-columns: minmax(150px, 1fr) auto; column-gap: 10px; align-items: center; }

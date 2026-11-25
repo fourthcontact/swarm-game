@@ -115,6 +115,8 @@ export class Hud {
   names: (faction: number) => string = (f) => FACTION_NAMES[f];
   private dom: HTMLDivElement;
   private heartBar: HTMLDivElement;
+  /** the heart bar's bottom needs measuring again for the toasts under it (#267) */
+  private heartToastStale = true;
   private warlordChip: HTMLDivElement;
   private siege: HTMLDivElement;
   private siegeTrack: HTMLDivElement;
@@ -385,6 +387,7 @@ export class Hud {
 
   /** How much of the screen the top panel and bottom bar (or the side rails) cover. */
   measure(): void {
+    this.heartToastStale = true;
     const h = this.el.clientHeight || window.innerHeight;
     const w = this.el.clientWidth || window.innerWidth;
     // Landscape phones (#113): chips, energy and the wheel down the left, actions down the right.
@@ -866,6 +869,7 @@ export class Hud {
     // The Bloom's heart (campaign finale): its health, and what wards it.
     const hs = heartSlot(w);
     this.heartBar.style.display = hs >= 0 ? 'block' : 'none';
+    if (hs >= 0 && !this.el.classList.contains('has-heart')) this.heartToastStale = true;
     this.el.classList.toggle('has-heart', hs >= 0);
     if (this.warlord >= 0) {
       this.warlordChip.classList.toggle('below', hs >= 0);
@@ -886,11 +890,18 @@ export class Hud {
       (this.heartBar.children[1].children[0] as HTMLElement).style.width = `${(100 * w.hp[hs]) / h.maxHp}%`;
       const text = ward > 0 ? `Shielded by ${ward} Bloom nest${ward > 1 ? 's' : ''}: take ${ward > 1 ? 'them all' : 'it'} to hurt it` : 'Unshielded: strike now';
       const el = this.heartBar.children[2] as HTMLElement;
-      if (el.textContent !== text) el.textContent = text;
+      if (el.textContent !== text) {
+        el.textContent = text;
+        this.heartToastStale = true;
+      }
       this.heartBar.classList.toggle('open', ward === 0);
-      // Toasts go under the heart bar so they don't hide its ward line (#267).
-      const top = this.el.getBoundingClientRect().top;
-      this.el.style.setProperty('--hearttoast', `${Math.round(this.heartBar.getBoundingClientRect().bottom - top + 8)}px`);
+      // Toasts go under the heart bar so they don't hide its ward line (#267). Measured only when the bar
+      // can have moved (shown, new text, a resize), not every frame: reading its box forces a layout.
+      if (this.heartToastStale) {
+        this.heartToastStale = false;
+        const top = this.el.getBoundingClientRect().top;
+        this.el.style.setProperty('--hearttoast', `${Math.round(this.heartBar.getBoundingClientRect().bottom - top + 8)}px`);
+      }
     }
 
     // Domination: a big countdown nobody can miss, with what to do about it.

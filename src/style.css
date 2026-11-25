@@ -1238,6 +1238,40 @@ body.mobile .coach .coach-row button { padding: 3px 10px; font-size: 12px; }
 button.danger, button.danger:hover:not(:disabled) { border-color: var(--hot); color: var(--hot); }
 .run-debrief.win h2 { color: #b4ff39; }
 .run-debrief.lose h2 { color: var(--hot); }
+/* The defeat screen (#271): the run map fills the screen, the Bloom closing over your camp, a card over it. */
+.screen.defeat { overflow: hidden; justify-content: flex-end; padding-right: max(16px, 7vw); }
+.defeat-map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+/* A dark vignette, so the card reads over the map. */
+.screen.defeat::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at center, rgba(4, 5, 12, 0.15) 30%, rgba(4, 5, 12, 0.85) 100%); }
+.defeat-card { position: relative; width: min(460px, 100%); background: rgba(10, 8, 18, 0.86); border-color: rgba(255, 93, 115, 0.35); animation: defeat-in 0.9s ease-out 0.5s both; }
+@keyframes defeat-in { from { opacity: 0; transform: translateY(12px); } }
+@media (prefers-reduced-motion: reduce) { .defeat-card { animation: none; } }
+.defeat-card .eyebrow { text-align: center; }
+.defeat-card .result { font-size: 52px; margin: 2px 0 8px; letter-spacing: 0.14em; text-transform: uppercase; text-align: center; color: #ff5d73; text-shadow: 0 0 30px rgba(255, 93, 115, 0.5); }
+.defeat-cause { text-align: center; color: #e6d5da; }
+.defeat-stats { margin: 12px 0 4px; }
+.defeat-stats th { text-align: left; white-space: nowrap; padding: 5px 12px 5px 0; border-top: 1px solid var(--line); vertical-align: top; }
+.defeat-stats td { overflow-wrap: anywhere; }
+.defeat-stats tr:first-child th, .defeat-stats tr:first-child td { border-top: 0; }
+/* Phones: a smaller title, buttons stacked full width with the main one first. */
+body.mobile .defeat-card .result { font-size: 40px; }
+/* Upright phones: the map is a band across the top, the card below it. */
+@media (max-width: 599px) {
+  .screen.defeat { justify-content: center; align-items: flex-end; padding: 12px; }
+  .defeat-map { height: 40%; bottom: auto; -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
+  .defeat-card { max-height: calc(60% + 12px); padding: 16px 16px 14px; }
+  .defeat-card .result { margin: 0 0 4px; }
+  .defeat-card .brood-events { margin: 6px 0; font-size: 13px; line-height: 1.45; }
+  .defeat-stats { font-size: 13px; }
+  .defeat-stats th, .defeat-stats td { padding-top: 3px; padding-bottom: 3px; }
+  .defeat-card .row.end { margin-top: 14px; }
+}
+body.mobile:not(.land) .defeat-card .row.end { flex-direction: column-reverse; align-items: stretch; }
+/* Phones held sideways: the card to the right, the map on the left. */
+body.land .screen.defeat { padding-right: calc(8px + env(safe-area-inset-right, 0px)); }
+body.land .defeat-card { width: min(400px, 60%); }
+body.land .defeat-card .result { font-size: 32px; margin: 0 0 4px; }
+body.land .defeat-stats { font-size: 13px; }
 
 /* ---- creature portraits (#72) ----------------------------------------- */
 

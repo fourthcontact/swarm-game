@@ -925,7 +925,7 @@ export class SwarmDots {
   }
 
   /** `zoom` is the map's zoom against the default view: the orbit scales with it, but never shrinks inside the node's disc. */
-  draw(g: CanvasRenderingContext2D, at: RunNode, time: number, X: (x: number) => number, Y: (y: number) => number, u: number, color: string, zoom = 1): void {
+  draw(g: CanvasRenderingContext2D, at: RunNode, time: number, X: (x: number) => number, Y: (y: number) => number, u: number, color: string, zoom = 1, alpha = 1): void {
     const ru = u * zoom;
     const inner = (nodeRadius(at, DEFAULT_ICONS) + 4) * u;
     const dot = u * Math.max(0.55, Math.min(1.6, Math.sqrt(zoom)));
@@ -950,11 +950,11 @@ export class SwarmDots {
         x = fx + dx * e - (dy / len) * bow;
         y = fy + dy * e + (dx / len) * bow;
       }
-      g.globalAlpha = 0.22;
+      g.globalAlpha = 0.22 * alpha;
       g.beginPath();
       g.arc(x, y, 4.5 * dot, 0, Math.PI * 2);
       g.fill();
-      g.globalAlpha = 0.95;
+      g.globalAlpha = 0.95 * alpha;
       g.beginPath();
       g.arc(x, y, 2 * dot, 0, Math.PI * 2);
       g.fill();

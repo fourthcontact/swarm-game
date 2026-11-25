@@ -1121,6 +1121,8 @@ body.mobile .coach .coach-row button { padding: 3px 10px; font-size: 12px; }
 
 /* Opaque, no backdrop blur: the menu and its battle pause underneath it (#130). */
 .runmap { padding: 0; background: #04050c; }
+/* The run's debrief and picks pause it too (#270): the same backdrop, as the canvas under them is stale. */
+.screen.covers { background: #04050c; }
 #ui.covered > .menu { visibility: hidden; }
 .runmap-frame {
   width: 100%; height: 100%;

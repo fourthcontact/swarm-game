@@ -62,6 +62,7 @@ import { el, esc } from './dom';
 import { FACTION_HEX } from '../content/factions';
 import { DIFFICULTY_NAMES } from '../sim/ai/bot';
 import { isMobile } from './mobile';
+import { RUN_SCREEN } from './cover';
 
 
 const SIZE_LABEL = { small: 'Small', medium: 'Medium', large: 'Large' } as const;
@@ -1471,7 +1472,7 @@ export function runDebrief(run: RunState, node: RunNode, won: boolean, res: Turn
   const foes = node.kind === 'start' || (!won && node.id === run.at) ? [] : rivals(run, node.id);
   const sealedNote = !won && !over && !restored && node.id !== run.at ? `<p class="retry-note">${retryNote(run, node.id)}</p>` : '';
   const m = el(`
-    <div class="screen modal dim">
+    <div class="${RUN_SCREEN}">
       <div class="card brief run-debrief ${run.status === 'won' || (won && !over) ? 'win' : 'lose'}">
         <div class="eyebrow">${esc(run.seedText)} · turn ${run.turn}</div>
         <h2>${title}</h2>
@@ -1618,7 +1619,7 @@ function rewardCard(run: RunState, r: Reward): string {
 
 /** After a won rescue with the roster full (#134): swap the rescued brood for one of yours, or let it go. */
 export function recruitPick(run: RunState, sfx: AudioEngine, h: { done: () => void; save: () => void }): HTMLDivElement {
-  const m = el(`<div class="screen modal dim"><div class="card hub reward-card"></div></div>`);
+  const m = el(`<div class="${RUN_SCREEN}"><div class="card hub reward-card"></div></div>`);
   const card = m.firstElementChild as HTMLElement;
   const r = run.recruit!;
   const rows = run.broods
@@ -1654,7 +1655,7 @@ export function recruitPick(run: RunState, sfx: AudioEngine, h: { done: () => vo
 
 /** After a won battle: pick 1 of 3 rewards, reroll for biomass, or skip. */
 export function rewardPick(run: RunState, sfx: AudioEngine, h: { done: () => void; save: () => void }): HTMLDivElement {
-  const m = el(`<div class="screen modal dim"><div class="card hub reward-card"></div></div>`);
+  const m = el(`<div class="${RUN_SCREEN}"><div class="card hub reward-card"></div></div>`);
   const card = m.firstElementChild as HTMLElement;
   const finish = (r: Reward) => {
     if (r.family === 'pact') sfx.pactTaken();

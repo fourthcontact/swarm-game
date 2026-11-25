@@ -866,6 +866,7 @@ export class Hud {
     // The Bloom's heart (campaign finale): its health, and what wards it.
     const hs = heartSlot(w);
     this.heartBar.style.display = hs >= 0 ? 'block' : 'none';
+    this.el.classList.toggle('has-heart', hs >= 0);
     if (this.warlord >= 0) {
       this.warlordChip.classList.toggle('below', hs >= 0);
       this.warlordChip.classList.toggle('down', !!w.factions[this.warlord]?.eliminated);
@@ -887,6 +888,9 @@ export class Hud {
       const el = this.heartBar.children[2] as HTMLElement;
       if (el.textContent !== text) el.textContent = text;
       this.heartBar.classList.toggle('open', ward === 0);
+      // Toasts go under the heart bar so they don't hide its ward line (#267).
+      const top = this.el.getBoundingClientRect().top;
+      this.el.style.setProperty('--hearttoast', `${Math.round(this.heartBar.getBoundingClientRect().bottom - top + 8)}px`);
     }
 
     // Domination: a big countdown nobody can miss, with what to do about it.

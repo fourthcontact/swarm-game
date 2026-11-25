@@ -199,7 +199,7 @@ class App {
   private demo: LocalSession | null = null;
   private screen: HTMLElement | null = null;
   private modal: HTMLElement | null = null;
-  /** a full-screen modal (the run map) hides the menu and the demo: both pause under it (#130) */
+  /** an opaque modal (the run map #130, the room, the run's screens #270; see ui/cover.ts) hides the menu and the demo: both pause under it */
   private covered = false;
   private endShown = false;
   /** a room's end screen while it's up, for its buttons to follow hosting (#233) */
@@ -2154,7 +2154,7 @@ class App {
       g.render(this.time);
       if (g.result && !this.endShown && this.time - g.resultTime > 1.6) this.showEnd();
     } else if (this.demo && this.covered) {
-      // Hidden under the run map: keep the score going, but don't step or draw the battle.
+      // Hidden under a covering modal (ui/cover.ts): keep the score going, but don't step or draw the battle.
       this.sfx.update(dt, this.demo.world, -1, 'menu');
     } else if (this.demo) {
       const d = this.demo;
@@ -2183,7 +2183,7 @@ class App {
       });
     }
 
-    // Under the run map the canvas keeps its last frame: nothing new to show.
+    // Under a covering modal the canvas keeps its last frame: nothing new to show.
     if (!this.covered) {
       this.particles.update(dt);
       this.rings.update(dt);

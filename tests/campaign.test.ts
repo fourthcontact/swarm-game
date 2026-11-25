@@ -496,6 +496,23 @@ describe('broods', () => {
     resolveTurn(run, moves(run)[0], LOSS, run.broods.map((b) => b.id), 0);
     expect(run).toMatchObject({ status: 'lost', lostTo: 'broods' });
   });
+
+  it('keeps the run’s history for the defeat screen (#271): biomass gathered and broods fallen, through a checkpoint', () => {
+    const run = newRun('history', 0, 'swarm', 0);
+    const first = moves(run)[0];
+    run.nodes[first].checkpoint = true;
+    const won = resolveTurn(run, first, WIN, run.fielded, 0);
+    expect(run.gathered).toBe(won.biomass);
+    // Spending doesn't take it back: it counts what was earned.
+    run.biomass = 0;
+    const names = run.broods.map((b) => b.name);
+    for (const b of run.broods) b.size = 5;
+    const lost = resolveTurn(run, moves(run)[0], LOSS, run.broods.map((b) => b.id), 0);
+    expect(lost.checkpoint).toBe('restored');
+    // The checkpoint rewinds the roster, not the record.
+    expect(run.gathered).toBe(won.biomass + lost.biomass);
+    expect(run.fallen!.map((f) => f.name)).toEqual(names);
+  });
 });
 
 describe('camp', () => {

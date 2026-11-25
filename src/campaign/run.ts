@@ -244,6 +244,10 @@ export interface RunState {
   created: number;
   updated: number;
   log: { turn: number; node: number; won: boolean }[];
+  /** biomass earned from battles over the whole run, spending aside (#271; older saves: none) */
+  gathered?: number;
+  /** broods that died, in order (#271; older saves: none) */
+  fallen?: { name: string; kind: Brood['kind'] }[];
   /** lost battles reopened so far (#253) */
   retried?: number;
   /** retries paid per node (keys: node ids), so each retry of the same battle costs more; cleared when you win there */
@@ -752,6 +756,10 @@ export function resolveTurn(run: RunState, id: number, report: BattleReport | nu
     const pay = report.won ? biomassFor(node.reward, report) : Math.round(node.reward * RUN_DIFFICULTY[difficultyOf(run)].salvage);
     res.biomass = pay * (run.perks.includes('hunger') ? 2 : 1);
     run.biomass += res.biomass;
+    // Run history for the defeat screen (#271).
+    run.gathered = (run.gathered ?? 0) + res.biomass;
+    const died = res.events.filter((e) => e.what === 'died');
+    if (died.length) run.fallen = [...(run.fallen ?? []), ...died.map((e) => ({ name: e.name, kind: e.kind }))];
   }
   // A lost battle seals its node (#253): only biomass reopens it. A won one is settled,
   // so a later retry somewhere else starts its price afresh.
@@ -836,7 +844,8 @@ function restoreCheckpoint(run: RunState, now: number): void {
   const saved = JSON.parse(run.checkpointSave!) as RunState;
   const log = run.log;
   // Retries are run-wide (#253): rewinding to the checkpoint doesn't give them back.
-  Object.assign(run, saved, { log, retried: run.retried, tries: run.tries, checkpointSave: undefined, checkpointUsed: true, updated: now, status: 'active', lostTo: undefined, offer: undefined, recruit: undefined });
+  // Neither does the run's history (#271): what it gathered and who fell stays on the record.
+  Object.assign(run, saved, { log, gathered: run.gathered, fallen: run.fallen, retried: run.retried, tries: run.tries, checkpointSave: undefined, checkpointUsed: true, updated: now, status: 'active', lostTo: undefined, offer: undefined, recruit: undefined });
 }
 
 // ---- camp -----------------------------------------------------------------

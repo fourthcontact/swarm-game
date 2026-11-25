@@ -48,6 +48,7 @@ import { DELAY_BAD_MS, DELAY_WARN_MS, formatTime } from './ui/hud';
 import type { LobbyView } from './ui/lobby';
 import { FACTION_NAMES } from './content/factions';
 import { relayOnly } from './net/ice';
+import { coversDemo } from './ui/cover';
 
 /** the multiplayer code, loaded on first use */
 type Mp = typeof import('./net/mp');
@@ -347,8 +348,8 @@ class App {
     this.modal?.remove();
     this.modal = m;
     if (m) this.ui.appendChild(m);
-    // the run map and the room (#184) cover everything: the demo battle stops under them
-    this.covered = !!m && (m.classList.contains('runmap') || m.classList.contains('opaque'));
+    // The run map, the room (#184) and the run's own screens (#270): the demo battle stops under them.
+    this.covered = !!m && coversDemo(m.classList);
     this.ui.classList.toggle('covered', this.covered);
   }
 

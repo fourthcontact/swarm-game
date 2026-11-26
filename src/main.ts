@@ -19,7 +19,8 @@ import { PERSONALITIES } from './sim/ai/bot';
 import { Kind, MAX_UNITS, NEUTRAL, TICK_HZ } from './sim/constants';
 import type { MatchSetup } from './sim/setup';
 import { spawnUnit } from './sim/world';
-import { endRun, mapBloom, needsBattle, newRun, payRetry, resolveTurn, stranded, type RunNode, type RunState, type TurnResult } from './campaign/run';
+import { endRun, mapBloom, needsBattle, newRun, payRetry, resolveTurn, stranded, type RunDifficulty, type RunNode, type RunState, type TurnResult } from './campaign/run';
+import { defeatScreen } from './ui/defeat';
 import { battleType, briefingFor, briefsSeen, markBriefSeen, resetBriefs, type BriefLord } from './campaign/briefings';
 import type { BattleReport } from './campaign/broods';
 import { battleReport, nodeSetup, warlordOf } from './campaign/battle';
@@ -456,18 +457,7 @@ class App {
     this.setModal(
       runHub(listRuns(), loadHistory(), randomSeed(), this.sfx, {
         resume: (run) => this.showRunMap(run),
-        start: (seed) =>
-          this.setModal(
-            starterPick(seed, {
-              pick: (pack, difficulty) => {
-                const run = newRun(seed, loadPrefs().color, pack, Date.now(), difficulty);
-                saveRun(run);
-                this.sfx.runStart();
-                this.showRunMap(run);
-              },
-              back: () => this.showRunHub(),
-            }),
-          ),
+        start: (seed) => this.startRun(seed),
         remove: (run) => {
           deleteRun(run.id);
           this.showRunHub();
@@ -476,6 +466,25 @@ class App {
         back: () => this.showCampaign(),
         howto: () => this.showRunHowTo(),
       }),
+    );
+  }
+
+  /** Pick a swarm and start a run on `seed`. `difficulty`: preselected, as from the defeat screen (#271). */
+  private startRun(seed: string, difficulty?: RunDifficulty): void {
+    this.setModal(
+      starterPick(
+        seed,
+        {
+          pick: (pack, d) => {
+            const run = newRun(seed, loadPrefs().color, pack, Date.now(), d);
+            saveRun(run);
+            this.sfx.runStart();
+            this.showRunMap(run);
+          },
+          back: () => this.showRunHub(),
+        },
+        difficulty,
+      ),
     );
   }
 
@@ -717,9 +726,14 @@ class App {
 
   /** The run ended on the map (#253): no way on, so the Bloom takes it. */
   private showRunLost(run: RunState): void {
+    this.showDefeat(run, { fresh: [], events: [], biomass: 0, warlords: [] });
+  }
+
+  /** A lost run's defeat screen (#271), with the music darkened under it (after setModal, which clears it). */
+  private showDefeat(run: RunState, res: TurnResult, left = false): void {
+    this.setModal(defeatScreen(run, res, { start: (seed, d) => this.startRun(seed, d), hub: () => this.leaveRun(run) }, left));
     this.sfx.defeat();
-    const none: TurnResult = { fresh: [], events: [], biomass: 0, warlords: [] };
-    this.setModal(runDebrief(run, run.nodes[run.at], false, none, { next: () => this.leaveRun(run), hub: () => this.leaveRun(run) }));
+    this.sfx.setBloom(1);
   }
 
   /** Settle a run battle: resolve the turn, save, and show the debrief. */
@@ -733,8 +747,8 @@ class App {
   /** A battle's turn is settled: its sounds, then the debrief. `left`: the page closed mid-battle (#266). */
   private showTurnDebrief(run: RunState, node: number, won: boolean, from: number, res: TurnResult, left = false): void {
     this.runSounds(res);
+    if (run.status === 'lost') return this.showDefeat(run, res, left);
     if (run.status === 'won') this.sfx.victory();
-    else if (run.status === 'lost') this.sfx.defeat();
     this.setModal(
       runDebrief(run, run.nodes[node], won, res, {
         next: () => this.showRunMap(run, this.runIntro(from, res)),

@@ -63,6 +63,7 @@ import { FACTION_HEX } from '../content/factions';
 import { DIFFICULTY_NAMES } from '../sim/ai/bot';
 import { isMobile } from './mobile';
 import { RUN_SCREEN } from './cover';
+import { lossCause, startDifficulty } from '../campaign/defeat';
 
 
 const SIZE_LABEL = { small: 'Small', medium: 'Medium', large: 'Large' } as const;
@@ -80,7 +81,7 @@ export const KIND_LABEL: Record<RunNode['kind'], string> = {
 const lossText = (keep: number) => (keep === 0.5 ? 'halved' : `cut to ${Math.round(keep * 100)}%`);
 
 /** A shape per unit kind, matching the in-battle silhouettes as closely as text allows. */
-const KIND_GLYPH: Record<number, string> = { [Kind.Dot]: '●', [Kind.Tank]: '■', [Kind.Lancer]: '▲', [Kind.Swift]: '◆' };
+export const KIND_GLYPH: Record<number, string> = { [Kind.Dot]: '●', [Kind.Tank]: '■', [Kind.Lancer]: '▲', [Kind.Swift]: '◆' };
 
 function broodChip(b: Brood): string {
   const tags = `${veteran(b) ? '★' : ''}${b.strains.length ? '✦'.repeat(b.strains.length) : ''}${b.wounded ? ' ✚' : ''}`;
@@ -142,7 +143,7 @@ function camView(cw: number, ch: number, cam: Cam): View {
 }
 
 /** Start zoomed in on the swarm, looking a little ahead toward the heart. */
-function homeCam(run: RunState, cw: number, ch: number): Cam {
+export function homeCam(run: RunState, cw: number, ch: number): Cam {
   const n = run.nodes[run.at];
   return { cx: n.x + 90, cy: n.y, zoom: cw / VIEW_SPAN / fitScale(cw, ch) };
 }
@@ -262,11 +263,14 @@ const EDGE_GLOW: readonly (readonly [number, number])[] = [
   [10, 0.05],
 ];
 
-/** The map: Bloom, links, nodes. `front` may lag the run's while it animates. */
-function drawMap(
+/**
+ * The map: Bloom, links, nodes. `front` may lag the run's while it animates.
+ * `fade` (0..1) dims your swarm and camp out, on a lost run too (the defeat screen, #271).
+ */
+export function drawMap(
   c: HTMLCanvasElement,
   run: RunState,
-  opts: { bloomT: number; selected: number | null; hover: number | null; time: number; fresh: Set<number>; freshT: number; thumb?: boolean; cam?: Cam; fx?: MapFx; ghost?: boolean; fog?: HTMLCanvasElement; peek?: readonly number[] },
+  opts: { bloomT: number; selected: number | null; hover: number | null; time: number; fresh: Set<number>; freshT: number; thumb?: boolean; cam?: Cam; fx?: MapFx; ghost?: boolean; fog?: HTMLCanvasElement; peek?: readonly number[]; fade?: number },
 ): View {
   // Thumbnails stay sharp; the live map follows the Resolution setting.
   const dpr = opts.thumb ? window.devicePixelRatio || 1 : renderScale();
@@ -280,6 +284,7 @@ function drawMap(
   const X = (x: number) => v.ox + x * v.s, Y = (y: number) => v.oy + y * v.s;
   const u = opts.thumb ? dpr * 0.35 : dpr; // pixel unit
   const known = revealed(run);
+  const live = 1 - Math.max(0, Math.min(1, opts.fade ?? 0));
   // The tour (#217) lifts the fog off what it's talking about.
   for (const id of opts.peek ?? []) known.add(id);
   g.clearRect(0, 0, cw, ch);
@@ -531,7 +536,11 @@ function drawMap(
     }
     // A small brood badge where one waits to be rescued.
     // The camp beside your swarm: tap it (or your node) to open the camp.
-    if (here && !opts.thumb) campSymbol(g, x + r * CAMP_AT, y - r * CAMP_AT, u, me, pulse);
+    if (here && !opts.thumb && live > 0) {
+      g.globalAlpha = live;
+      campSymbol(g, x + r * CAMP_AT, y - r * CAMP_AT, u, me, pulse);
+      g.globalAlpha = 1;
+    }
     if (n.rescue !== undefined && !taken && !dead && !lost) {
       const bx = x - r * 0.85, by = y - r * 0.85;
       g.fillStyle = '#06070f';
@@ -550,7 +559,7 @@ function drawMap(
   }
   // Your swarm: its dots orbit your node, over the nodes' glow.
   // Unlike the node icons, the swarm lives in the map: it shrinks as you zoom out (1 at the default zoom).
-  if (fx && run.status === 'active') fx.swarm.draw(g, run.nodes[run.at], opts.time, X, Y, u, me, (v.s * VIEW_SPAN) / cw);
+  if (fx && (run.status === 'active' || opts.fade !== undefined) && live > 0) fx.swarm.draw(g, run.nodes[run.at], opts.time, X, Y, u, me, (v.s * VIEW_SPAN) / cw, live);
   return v;
 }
 
@@ -1417,7 +1426,7 @@ export function runMap(
 
 // ---- after a battle ---------------------------------------------------------
 
-const EVENT_TEXT: Record<BroodEvent['what'], (e: BroodEvent) => string> = {
+export const EVENT_TEXT: Record<BroodEvent['what'], (e: BroodEvent) => string> = {
   grew: (e) => `grew to ${e.size}`,
   shrank: (e) => `came back with ${e.size}`,
   held: (e) => `held at ${e.size}`,
@@ -1429,7 +1438,7 @@ const EVENT_TEXT: Record<BroodEvent['what'], (e: BroodEvent) => string> = {
 };
 
 /** What happened to warlords this turn: a domain you broke, a stronghold the Bloom ate. */
-function lordText(run: RunState, res: TurnResult): string {
+export function lordText(run: RunState, res: TurnResult): string {
   const items = res.warlords.map(({ id, what }) => {
     const w = run.warlords![id];
     const name = `<b style="color:${FACTION_HEX[w.faction]}">♛ ${esc(w.name)}</b>`;
@@ -1457,11 +1466,7 @@ export function runDebrief(run: RunState, node: RunNode, won: boolean, res: Turn
     : run.status === 'won'
       ? `The Bloom's heart is destroyed. ${run.turn} turns, ${run.biomass} biomass gathered.`
       : run.status === 'lost'
-        ? run.lostTo === 'bloom'
-          ? run.sealed?.some((n) => !run.swallowed.includes(n))
-            ? 'No way on: the heart is out of reach, and no lost battle can be fought again. The Bloom consumes your swarm.'
-            : 'The Bloom closed every route. Your swarm is consumed.'
-          : 'Your last brood is gone.'
+        ? lossCause(run)
         : won
           ? `${res.warlords.some((w) => w.what === 'broken') ? 'Citadel taken' : `${KIND_LABEL[node.kind]} won`}. +${res.biomass} biomass.`
           : `Your swarm falls back${res.biomass ? `, salvaging +${res.biomass} biomass` : ''}. ${
@@ -1511,15 +1516,16 @@ export function retryNote(run: RunState, id: number): string {
 
 const LAST_DIFFICULTY = 'swarm.runDifficulty';
 
-export function starterPick(seed: string, h: { pick: (p: PackId, d: RunDifficulty) => void; back: () => void }): HTMLDivElement {
+/** `preset`: start on this difficulty, not the last one picked (a new run from the defeat screen, #271). */
+export function starterPick(seed: string, h: { pick: (p: PackId, d: RunDifficulty) => void; back: () => void }, preset?: RunDifficulty): HTMLDivElement {
   const ids = Object.keys(PACKS) as PackId[];
-  let difficulty: RunDifficulty = 'standard';
+  let stored: string | null = null;
   try {
-    const last = localStorage.getItem(LAST_DIFFICULTY) as RunDifficulty | null;
-    if (last && DIFFICULTIES.includes(last)) difficulty = last;
+    stored = localStorage.getItem(LAST_DIFFICULTY);
   } catch {
     /* storage unavailable: Standard */
   }
+  let difficulty = startDifficulty(preset, stored);
   const m = el(`
     <div class="screen modal">
       <div class="card hub">

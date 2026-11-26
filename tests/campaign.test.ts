@@ -496,6 +496,39 @@ describe('broods', () => {
     resolveTurn(run, moves(run)[0], LOSS, run.broods.map((b) => b.id), 0);
     expect(run).toMatchObject({ status: 'lost', lostTo: 'broods' });
   });
+
+  it('keeps the run’s history for the defeat screen (#271): biomass gathered and broods fallen, through a checkpoint', () => {
+    const run = newRun('history', 0, 'swarm', 0);
+    expect(run).toMatchObject({ gathered: 0, fallen: [] });
+    const first = moves(run)[0];
+    run.nodes[first].checkpoint = true;
+    const won = resolveTurn(run, first, WIN, run.fielded, 0);
+    expect(run.gathered).toBe(won.biomass);
+    // Spending doesn't take it back: it counts what was earned.
+    run.biomass = 0;
+    const ids = run.broods.map((b) => b.id);
+    for (const b of run.broods) b.size = 5;
+    const lost = resolveTurn(run, moves(run)[0], LOSS, ids, 0);
+    expect(lost.checkpoint).toBe('restored');
+    // The checkpoint rewinds the roster, not the biomass record; the broods it brought back aren't fallen.
+    expect(run.gathered).toBe(won.biomass + lost.biomass);
+    expect(run.fallen).toEqual([]);
+    // When they die again, each is listed once.
+    for (const b of run.broods) b.size = 5;
+    resolveTurn(run, moves(run)[0], LOSS, run.broods.map((b) => b.id), 0);
+    expect(run.status).toBe('lost');
+    expect(run.fallen!.map((f) => f.id).sort()).toEqual([...ids].sort());
+  });
+
+  it('a run from an older build doesn’t start a partial history when it plays on (#271)', () => {
+    const run = newRun('old-history', 0, 'swarm', 0);
+    delete run.gathered;
+    delete run.fallen;
+    for (const b of run.broods) b.size = 5;
+    resolveTurn(run, moves(run)[0], LOSS, run.broods.map((b) => b.id), 0);
+    expect(run.gathered).toBeUndefined();
+    expect(run.fallen).toBeUndefined();
+  });
 });
 
 describe('camp', () => {

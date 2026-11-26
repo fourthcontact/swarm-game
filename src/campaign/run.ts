@@ -244,6 +244,13 @@ export interface RunState {
   created: number;
   updated: number;
   log: { turn: number; node: number; won: boolean }[];
+  /**
+   * Biomass earned from battles over the whole run, spending aside (#271). Set from the run's start only:
+   * a run from an older build never gets it, so its count can't be mistaken for the whole run's.
+   */
+  gathered?: number;
+  /** broods that died, in order (#271; from the run's start only, like `gathered`) */
+  fallen?: { id: number; name: string; kind: Brood['kind'] }[];
   /** lost battles reopened so far (#253) */
   retried?: number;
   /** retries paid per node (keys: node ids), so each retry of the same battle costs more; cleared when you win there */
@@ -621,6 +628,8 @@ export function newRun(seedText: string, color: number, pack: PackId = 'swarm', 
     created: now,
     updated: now,
     log: [],
+    gathered: 0,
+    fallen: [],
   };
 }
 
@@ -747,11 +756,16 @@ export function resolveTurn(run: RunState, id: number, report: BattleReport | nu
     run.log.push({ turn: run.turn, node: id, won });
     const fought = fighters(run.broods, fielded, maxFielded(run)).map((b) => b.id);
     run.fielded = fought.length ? fought : run.fielded;
+    const before = run.broods.map((b) => ({ id: b.id, name: b.name, kind: b.kind }));
     res.events = settleBroods(run.broods, fought, report, RUN_DIFFICULTY[difficultyOf(run)].lossKeep);
+    const gone = before.filter((b) => !run.broods.some((r) => r.id === b.id));
     // A lost battle still pays salvage: a share of the node's reward.
     const pay = report.won ? biomassFor(node.reward, report) : Math.round(node.reward * RUN_DIFFICULTY[difficultyOf(run)].salvage);
     res.biomass = pay * (run.perks.includes('hunger') ? 2 : 1);
     run.biomass += res.biomass;
+    // Run history for the defeat screen (#271), on runs that have kept it from the start.
+    if (run.gathered !== undefined) run.gathered += res.biomass;
+    if (run.fallen) for (const id of gone) run.fallen.push(id);
   }
   // A lost battle seals its node (#253): only biomass reopens it. A won one is settled,
   // so a later retry somewhere else starts its price afresh.
@@ -836,7 +850,10 @@ function restoreCheckpoint(run: RunState, now: number): void {
   const saved = JSON.parse(run.checkpointSave!) as RunState;
   const log = run.log;
   // Retries are run-wide (#253): rewinding to the checkpoint doesn't give them back.
-  Object.assign(run, saved, { log, retried: run.retried, tries: run.tries, checkpointSave: undefined, checkpointUsed: true, updated: now, status: 'active', lostTo: undefined, offer: undefined, recruit: undefined });
+  // Nor the run's history (#271): what it gathered stays on the record. Broods the checkpoint brings back
+  // are off the list of the fallen, so none is listed alive, or twice if it dies again.
+  const fallen = run.fallen?.filter((f) => !saved.broods.some((b) => b.id === f.id));
+  Object.assign(run, saved, { log, gathered: run.gathered, fallen, retried: run.retried, tries: run.tries, checkpointSave: undefined, checkpointUsed: true, updated: now, status: 'active', lostTo: undefined, offer: undefined, recruit: undefined });
 }
 
 // ---- camp -----------------------------------------------------------------

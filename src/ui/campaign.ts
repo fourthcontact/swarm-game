@@ -4,6 +4,7 @@
  */
 
 import { whyNot } from './whynot';
+import { growNote, lossNote, lossShort } from './costs';
 import type { AudioEngine } from '../audio/engine';
 import { mountCreatures } from '../art/creature';
 import { BLOOM, BloomField, MapFx, battleMapCanvas, cardMap, bloomGapView, sigilCanvas, drawIcon, glyph, nodeRadius, tendrils, wobble } from './runmapfx';
@@ -756,7 +757,7 @@ function campModal(run: RunState, sfx: AudioEngine, h: { save: () => void; close
       </article>`;
     };
     body.innerHTML = `<div class="brood-cards">${run.broods.map(card).join('')}</div>
-      <p class="hint">${run.broods.length} of ${MAX_ROSTER} broods. Heal a wounded brood so it can fight next battle; raise its cap so it can grow larger.</p>`;
+      <p class="hint">${run.broods.length} of ${MAX_ROSTER} broods. Heal a wounded brood so it can fight next battle; raise its cap so it can grow larger. ${growNote()}</p>`;
     mountCreatures(body, run.broods.map((b) => broodCreature(run, b)), 112);
     const row = body.querySelector('.brood-cards') as HTMLElement;
     // A mouse wheel scrolls the row sideways.
@@ -1092,7 +1093,7 @@ export function runMap(
       }
       if (n.checkpoint) rows.push(`<dt>Checkpoint</dt><dd>${run.checkpointUsed ? 'Already used' : 'Reach it to save the run here, once'}</dd>`);
     }
-    const status = n.id === run.at ? 'Your swarm is here, at its camp.' : dead ? 'Lost to the Bloom.' : isSealed ? (canReopen ? retryNote(run, n.id).replace(' from the map', '') : '🔒 You lost here: sealed. Only a step away can you pay to fight here again.') : taken ? 'Taken: march through without a battle.' : canGo ? '' : whyNot(run, n.id);
+    const status = n.id === run.at ? 'Your swarm is here, at its camp.' : dead ? 'Lost to the Bloom.' : isSealed ? (canReopen ? retryNote(run, n.id).replace(' from the map', '') : '🔒 You lost here: sealed. Only a step away can you pay to fight here again.') : taken ? 'Taken: march through without a battle.' : canGo ? (needsBattle(run, n.id) ? lossShort(run, n.id) : '') : whyNot(run, n.id);
     const verb = !canGo ? null : needsBattle(run, n.id) ? 'Fight' : 'March';
     panel.classList.remove('wide');
     panel.innerHTML = `
@@ -1154,6 +1155,7 @@ export function runMap(
         <p class="hint">${max === 1 ? `One only (Lone wolf), at ${LONE_WOLF}× size, as veterans` : `Up to ${max}`}. They are your starting army: win and each keeps its own survivors, a share of the new units of its kind, and 2 more, but one with none of its kind left is wiped out; lose and they're wounded and ${lossText(RUN_DIFFICULTY[difficultyOf(run)].lossKeep)}.</p>
         <div class="brood-list">${rows}</div>
         ${fitOnes.length ? '' : '<p class="hint">Every brood is wounded. A militia of 10 Swarmers fights this one, and no brood is at risk.</p>'}
+        ${run.sealed?.includes(n.id) ? '' : `<p class="retry-note">${lossNote(run, n.id)}</p>`}
         <div class="row">
           <button data-a="back">Back</button>
           <button class="primary grow1" data-a="fight" ${fitOnes.length && !count ? 'disabled' : ''}>${count ? `Fight with ${count} brood${count > 1 ? 's' : ''}` : 'Fight with the militia'}${run.sealed?.includes(n.id) ? ` · ${retryCost(run, n.id)} biomass` : ''}</button>
@@ -1632,14 +1634,14 @@ export function recruitPick(run: RunState, sfx: AudioEngine, h: { done: () => vo
     .map(
       (b) => `<button class="brood-pick" data-b="${b.id}">
         <span class="glyph">${KIND_GLYPH[b.kind]}</span>
-        <span class="who"><b>Replace ${esc(b.name)}</b><small>${KIND_NAME[b.kind]} · ${b.size}/${b.cap}${b.wounded ? ' · wounded' : ''}${b.wins ? ` · ${b.wins} win${b.wins === 1 ? '' : 's'}` : ''}${strainText(b, ' · ✦ ')}</small></span>
+        <span class="who"><b>Replace ${esc(b.name)}</b><small>${KIND_NAME[b.kind]} · ${b.size}/${b.cap}${b.wounded ? ' · wounded' : ''}${b.wins ? ` · ${b.wins} win${b.wins === 1 ? '' : 's'}` : ''}${strainText(b, ' · ✦ ')} · leaves the run</small></span>
       </button>`,
     )
     .join('');
   card.innerHTML = `
     <div class="eyebrow">${esc(run.seedText)} · turn ${run.turn}</div>
     <h2>A brood wants to join</h2>
-    <p class="hint"><span class="glyph">${KIND_GLYPH[r.kind]}</span> <b>${esc(r.name)}</b>, ${KIND_NAME[r.kind]}, ${r.size}/${r.cap}. Your roster is full (${MAX_ROSTER}): swap it for one of yours, or let it go.</p>
+    <p class="hint"><span class="glyph">${KIND_GLYPH[r.kind]}</span> <b>${esc(r.name)}</b>, ${KIND_NAME[r.kind]}, ${r.size}/${r.cap}. Your roster is full (${MAX_ROSTER}): swap it for one of yours, or let it go. The one you replace leaves the run, with its strains.</p>
     <div class="brood-list">${rows}</div>
     <div class="row end"><button data-a="skip">Let it go</button></div>`;
   card.querySelectorAll<HTMLButtonElement>('[data-b]').forEach((btn) =>
@@ -1679,7 +1681,7 @@ export function rewardPick(run: RunState, sfx: AudioEngine, h: { done: () => voi
       <p class="hint">${run.biomass} biomass</p>
       <div class="rewards">${ids.map((id) => rewardCard(run, REWARD[id])).join('')}</div>
       <div class="row">
-        <button data-a="skip">Skip</button>
+        <button data-a="skip">Take nothing</button>
         <button class="grow1" data-a="reroll" ${run.biomass >= cost ? '' : 'disabled'}>Reroll · ${cost} biomass</button>
       </div>`;
     card.querySelectorAll<HTMLButtonElement>('[data-r]').forEach((b) =>

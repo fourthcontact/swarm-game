@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BattleReport } from '../src/campaign/broods';
-import { moves, needsBattle, newRun, resolveTurn, RUN_DIFFICULTY, type RunState } from '../src/campaign/run';
+import { moves, needsBattle, newRun, reopenable, resolveTurn, RUN_DIFFICULTY, type RunState } from '../src/campaign/run';
 import { NODE_KEY, NODE_STATES, RESCUE, SEALED, SEALED_SHUT, nodeCtx, nodeLook, nodeState, type NodeLook, type NodeState } from '../src/ui/nodelook';
 
 const WIN: BattleReport = { won: true, survivors: [30, 12, 12, 12], nests: 6, seconds: 200 };
@@ -109,6 +109,26 @@ describe('run map node looks and their key (#287)', () => {
     expect(state(run, id)).toBe('reopen');
     run.retried = RUN_DIFFICULTY.standard.retries;
     expect(state(run, id)).toBe('sealed');
+  });
+
+  it('a sealed node out of step but still reopenable shows reopen, not sealed for good', () => {
+    // Lose a battle, then win elsewhere so the sealed node is no longer next to you.
+    for (let i = 0; i < 200; i++) {
+      const run = newRun(`nodelook-far-${i}`, 0, 'swarm', 0);
+      const lost = moves(run).find((n) => needsBattle(run, n));
+      if (lost === undefined) continue;
+      resolveTurn(run, lost, LOSS, run.broods.map((b) => b.id), 0);
+      if (run.status !== 'active' || !run.sealed?.includes(lost)) continue;
+      for (const step of moves(run)) {
+        if (run.nodes[step].links.includes(lost)) continue;
+        const r2: RunState = structuredClone(run);
+        resolveTurn(r2, step, WIN, r2.broods.filter((b) => !b.wounded).map((b) => b.id), 0);
+        if (r2.status !== 'active' || r2.nodes[r2.at].links.includes(lost) || !reopenable(r2).includes(lost)) continue;
+        expect(state(r2, lost)).toBe('reopen');
+        return;
+      }
+    }
+    throw new Error('no seed leaves a sealed node reopenable but out of step');
   });
 
   it('a swallowed node, but not while its ring is still closing', () => {

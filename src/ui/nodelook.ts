@@ -2,7 +2,7 @@
  * How a run map node looks in each state (#287): one table that the map (drawMap in ui/campaign.ts)
  * and the key in the `?` card both draw from, so the key can't drift from the map.
  */
-import { moves, reachable, retriesLeft, sealedMoves, type RunState } from '../campaign/run';
+import { moves, reachable, reopenable, retriesLeft, type RunState } from '../campaign/run';
 import { BLOOM, glyph } from './runmapfx';
 
 export type NodeState = 'here' | 'open' | 'taken' | 'plain' | 'missed' | 'reopen' | 'sealed' | 'swallowed' | 'heart';
@@ -46,8 +46,9 @@ export function nodeCtx(run: RunState, o: { thumb?: boolean; fresh?: Set<number>
     open: new Set(moves(run)),
     reach: o.thumb ? null : reachable(run),
     sealed: new Set(run.sealed ?? []),
-    // Next to you with a retry left: the card offers Fight again. Otherwise it's sealed for good.
-    reopen: new Set(retriesLeft(run) > 0 ? sealedMoves(run) : []),
+    // A step from anywhere you can still reach, with a retry left: a retry could open it,
+    // now or once you walk next to it. Otherwise it's sealed for good.
+    reopen: new Set(retriesLeft(run) > 0 ? reopenable(run) : []),
     // A node being swallowed right now still shows as it was until the ring closes.
     swallowed: (id) => run.swallowed.includes(id) && (!fresh.has(id) || freshT >= 1),
   };

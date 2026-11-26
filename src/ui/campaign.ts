@@ -336,7 +336,7 @@ export function drawMap(
   // a faint Bloom-pink wash read too much like the grey, and its nodes show the Bloom anyway.
   for (const w of run.warlords ?? []) {
     if (!w.nodes.some((id) => known.has(id))) continue;
-    if (!w.broken && run.swallowed.includes(w.stronghold)) continue;
+    if (!w.broken && isSwallowed(w.stronghold)) continue;
     g.fillStyle = g.strokeStyle = w.broken ? SEALED_SHUT : FACTION_HEX[w.faction];
     g.globalAlpha = w.broken ? 0.12 : 0.16;
     g.lineCap = 'round';
@@ -412,7 +412,12 @@ export function drawMap(
     drawNodeBase(g, look, x, y, r, u, n.kind === 'finale', pulse);
 
     // The icon: the camp's roof, or the battle in the chosen style (?runicons=).
-    if (opts.thumb || n.kind === 'finale') continue;
+    if (opts.thumb) continue;
+    // The heart has no icon, but a lost finale still wears its padlock, as the key shows.
+    if (n.kind === 'finale') {
+      drawNodeTop(g, look, x, y, r, u, pulse);
+      continue;
+    }
     if (n.kind === 'start') glyph(g, n.kind, x, y, r, u, look.ink);
     else drawIcon(g, run, n, fx?.style ?? 'glyph', x, y, r, u, { taken, dead, here, me, ink: look.ink });
     // The veil on a node you passed by, and the padlock on a lost battle's (#253, #287).

@@ -6,8 +6,18 @@ import { difficultyOf, retriesLeft, retryCost, RUN_DIFFICULTY, type RunState } f
  * them without a DOM.
  */
 
-/** What losing an unsealed battle costs: a loss seals the node, and only biomass reopens it (#253). */
-export function lossNote(run: RunState, id: number): string {
+/**
+ * The run as it will be once the retry at a sealed node is paid (#253): one retry fewer, and
+ * this node's next retry dearer. An unsealed node is unchanged.
+ */
+function afterPay(run: RunState, id: number): RunState {
+  if (!run.sealed?.includes(id)) return run;
+  return { ...run, retried: (run.retried ?? 0) + 1, tries: { ...run.tries, [id]: (run.tries?.[id] ?? 0) + 1 } };
+}
+
+/** What losing a battle costs: a loss seals the node, and only biomass reopens it (#253). On a retry, the price after paying it. */
+export function lossNote(at: RunState, id: number): string {
+  const run = afterPay(at, id);
   const left = retriesLeft(run);
   if (left === 0)
     return RUN_DIFFICULTY[difficultyOf(run)].retries === 0

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { COST, type BattleReport, type Brood } from '../src/campaign/broods';
-import { moves, needsBattle, newRun, resolveTurn, retryCost, RUN_DIFFICULTY, type RunDifficulty, type RunState } from '../src/campaign/run';
+import { moves, needsBattle, newRun, payRetry, resolveTurn, retryCost, RUN_DIFFICULTY, type RunDifficulty, type RunState } from '../src/campaign/run';
 import { growNote, lossNote, lossShort } from '../src/ui/costs';
 
 const LOSS: BattleReport = { won: false, survivors: [0, 0, 0, 0], nests: 0, seconds: 120 };
@@ -45,6 +45,19 @@ describe('a battle says what losing it costs before you fight (#272)', () => {
   it('on Brutal, says Brutal allows none', () => {
     const { run, id } = firstFight('brutal');
     expect(lossNote(run, id)).toBe("Lose and it's sealed for good: Brutal allows no retries.");
+  });
+});
+
+describe('a paid retry says what losing again costs (#272)', () => {
+  it('names the price and retries left after paying', () => {
+    const { run, id } = firstFight();
+    resolveTurn(run, id, LOSS, run.broods.map((b) => b.id), 0);
+    run.biomass = 10_000;
+    const note = lossNote(run, id);
+    expect(payRetry(run, id)).toBe(true);
+    expect(note).toBe(lossNote(run, id));
+    expect(note).toContain(`${retryCost(run, id)} biomass`);
+    expect(note).toMatch(/your last retry this run/);
   });
 });
 

@@ -1155,7 +1155,7 @@ export function runMap(
         <p class="hint">${max === 1 ? `One only (Lone wolf), at ${LONE_WOLF}× size, as veterans` : `Up to ${max}`}. They are your starting army: win and each keeps its own survivors, a share of the new units of its kind, and 2 more, but one with none of its kind left is wiped out; lose and they're wounded and ${lossText(RUN_DIFFICULTY[difficultyOf(run)].lossKeep)}.</p>
         <div class="brood-list">${rows}</div>
         ${fitOnes.length ? '' : '<p class="hint">Every brood is wounded. A militia of 10 Swarmers fights this one, and no brood is at risk.</p>'}
-        ${run.sealed?.includes(n.id) ? '' : `<p class="retry-note">${lossNote(run, n.id)}</p>`}
+        <p class="retry-note">${lossNote(run, n.id)}</p>
         <div class="row">
           <button data-a="back">Back</button>
           <button class="primary grow1" data-a="fight" ${fitOnes.length && !count ? 'disabled' : ''}>${count ? `Fight with ${count} brood${count > 1 ? 's' : ''}` : 'Fight with the militia'}${run.sealed?.includes(n.id) ? ` · ${retryCost(run, n.id)} biomass` : ''}</button>

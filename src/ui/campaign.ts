@@ -11,7 +11,7 @@ import { BLOOM, BloomField, MapFx, battleMapCanvas, cardMap, bloomGapView, sigil
 import { LONE_WOLF, bloomLabel, keyNests, rivals, siegeFor, warlordOf, type Rival } from '../campaign/battle';
 import { FORTRESS_LABEL } from '../sim/fortify';
 import { STRONGHOLD_WEIGHT, TRAITS, trophyOf } from '../campaign/warlords';
-import { FORT_TEXT, KIND_TEXT } from '../campaign/kinds';
+import { FORT_TEXT, KIND_LABEL, KIND_TEXT } from '../campaign/kinds';
 import { broodCreature, broodTemper } from '../campaign/character';
 import { renderScale } from '../render/resolution';
 import {
@@ -60,24 +60,18 @@ import { stepsFor, type TourCamp, type TourKind, type TourFocus, type TourMark }
 import { mountTour, runHowTo, type Tour } from './runtour';
 import { onRival, rivalStrip, showBigMap, showRival } from './battlepeek';
 import { el, esc } from './dom';
+import { countUp } from './countUp';
 import { FACTION_HEX } from '../content/factions';
 import { DIFFICULTY_NAMES } from '../sim/ai/bot';
 import { isMobile } from './mobile';
 import { RUN_SCREEN } from './cover';
-import { lossCause, startDifficulty } from '../campaign/defeat';
+import { startDifficulty } from '../campaign/defeat';
 
 
 const SIZE_LABEL = { small: 'Small', medium: 'Medium', large: 'Large' } as const;
 const CAVE_LABEL = { off: 'Open', belt: 'Cave belt', full: 'Caves' } as const;
 const TERRAIN_LABEL = { none: 'No terrain', light: 'Light terrain', standard: 'Terrain', heavy: 'Heavy terrain' } as const;
 
-export const KIND_LABEL: Record<RunNode['kind'], string> = {
-  start: 'Your camp',
-  conquest: 'Conquest',
-  domination: 'Domination',
-  hold: 'Hold the line',
-  finale: "The Bloom's heart",
-};
 /** What a lost battle leaves a brood, in words. */
 const lossText = (keep: number) => (keep === 0.5 ? 'halved' : `cut to ${Math.round(keep * 100)}%`);
 
@@ -94,7 +88,7 @@ function strainText(b: Brood, sep: string): string {
   return b.strains.length ? sep + b.strains.map((s) => REWARD[s]?.name ?? s).join(' + ') : '';
 }
 
-function broods(run: RunState): string {
+export function broods(run: RunState): string {
   return `<span class="broods">${run.broods.map(broodChip).join('')}</span>`;
 }
 
@@ -705,22 +699,16 @@ function campModal(run: RunState, sfx: AudioEngine, h: { save: () => void; close
     if (e.target === m) h.close();
   });
 
-  let tween = 0;
+  let tween = () => {};
   const spent = (from: number) => {
     const to = run.biomass;
     warnReserve();
     const float = el(`<span class="spent">−${from - to}</span>`);
     shown.parentElement!.append(float);
     float.addEventListener('animationend', () => float.remove());
-    const t0 = performance.now();
-    const id = ++tween;
-    const step = (now: number) => {
-      if (id !== tween) return;
-      const t = Math.min(1, (now - t0) / 450);
-      shown.textContent = String(Math.round(from + (to - from) * (1 - (1 - t) ** 3)));
-      if (t < 1) requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
+    // A second purchase mid-count starts from where the first one ends.
+    tween();
+    tween = countUp(shown, from, to);
   };
 
   const price = (cost: number, label: string, act: string) =>
@@ -1441,65 +1429,17 @@ export const EVENT_TEXT: Record<BroodEvent['what'], (e: BroodEvent) => string> =
 
 /** What happened to warlords this turn: a domain you broke, a stronghold the Bloom ate. */
 export function lordText(run: RunState, res: TurnResult): string {
-  const items = res.warlords.map(({ id, what }) => {
-    const w = run.warlords![id];
-    const name = `<b style="color:${FACTION_HEX[w.faction]}">♛ ${esc(w.name)}</b>`;
-    return what === 'broken'
-      ? `<li>${name}'s domain is broken. Trophy: <b>${esc(TRAITS[w.trait].trophy.name)}</b>. ${esc(TRAITS[w.trait].trophy.text)}.</li>`
-      : `<li>The Bloom ate ${name}'s stronghold: the warlord is gone.</li>`;
-  });
+  const items = res.warlords.map((w) => `<li>${lordItem(run, w)}</li>`);
   return items.length ? `<ul class="brood-events warlord-events">${items.join('')}</ul>` : '';
 }
 
-export function runDebrief(run: RunState, node: RunNode, won: boolean, res: TurnResult, h: { next: () => void; hub: () => void }, left = false): HTMLDivElement {
-  const over = run.status !== 'active';
-  const restored = res.checkpoint === 'restored';
-  const title = restored
-    ? 'Back to the checkpoint'
-    : run.status === 'won'
-      ? 'Run complete'
-      : run.status === 'lost'
-        ? 'Run lost'
-        : won
-          ? 'Territory taken'
-          : 'Driven back';
-  const text = restored
-    ? 'Your swarm was finished, but the checkpoint holds: the run resumes from there. It only saves you once.'
-    : run.status === 'won'
-      ? `The Bloom's heart is destroyed. ${run.turn} turns, ${run.biomass} biomass gathered.`
-      : run.status === 'lost'
-        ? lossCause(run)
-        : won
-          ? `${res.warlords.some((w) => w.what === 'broken') ? 'Citadel taken' : `${KIND_LABEL[node.kind]} won`}. +${res.biomass} biomass.`
-          : `Your swarm falls back${res.biomass ? `, salvaging +${res.biomass} biomass` : ''}. ${
-              node.kind === 'finale' && run.heartWound ? `The heart bears its wounds: ${Math.round(100 * run.heartWound)}% of its life is gone. ` : ''
-            }${RUN_DIFFICULTY[difficultyOf(run)].lossStep < 1 ? 'The Bloom slows, but still advances.' : 'The Bloom advances anyway.'}`;
-  const events = restored ? [] : res.events;
-  // None when the run ended on the map, where you stand (#253).
-  const foes = node.kind === 'start' || (!won && node.id === run.at) ? [] : rivals(run, node.id);
-  const sealedNote = !won && !over && !restored && node.id !== run.at ? `<p class="retry-note">${retryNote(run, node.id)}</p>` : '';
-  const m = el(`
-    <div class="${RUN_SCREEN}">
-      <div class="card brief run-debrief ${run.status === 'won' || (won && !over) ? 'win' : 'lose'}">
-        <div class="eyebrow">${esc(run.seedText)} · turn ${run.turn}</div>
-        <h2>${title}</h2>
-        ${left ? '<p class="hint">You left mid-battle: it counts as a retreat.</p>' : ''}
-        <p>${text}</p>
-        ${foes.length && !restored ? rivalStrip(foes, true, won ? 'beaten' : '') : ''}
-        ${restored ? '' : lordText(run, res)}
-        ${sealedNote}
-        ${events.length ? `<ul class="brood-events">${events.map((e) => `<li><span class="glyph">${KIND_GLYPH[e.kind]}</span> <b>${esc(e.name)}</b> ${EVENT_TEXT[e.what](e)}</li>`).join('')}</ul>` : ''}
-        ${res.checkpoint === 'reached' ? '<p class="hint">⚑ Checkpoint reached: if your swarm falls after this, the run restarts here once.</p>' : ''}
-        <p>${broods(run)} <span class="hint">${run.biomass} biomass</span></p>
-        <div class="row end">
-          ${over ? '<button class="primary" data-a="hub">Campaign</button>' : '<button class="primary" data-a="next">Continue</button>'}
-        </div>
-      </div>
-    </div>`);
-  mountCreatures(m, foes.map((r) => r.creature), 48);
-  m.querySelector('[data-a=next]')?.addEventListener('click', h.next);
-  m.querySelector('[data-a=hub]')?.addEventListener('click', h.hub);
-  return m;
+/** One warlord's fate, in words. */
+export function lordItem(run: RunState, { id, what }: TurnResult['warlords'][number]): string {
+  const w = run.warlords![id];
+  const name = `<b style="color:${FACTION_HEX[w.faction]}">♛ ${esc(w.name)}</b>`;
+  return what === 'broken'
+    ? `${name}'s domain is broken. Trophy: <b>${esc(TRAITS[w.trait].trophy.name)}</b>. ${esc(TRAITS[w.trait].trophy.text)}.`
+    : `The Bloom ate ${name}'s stronghold: the warlord is gone.`;
 }
 
 /** What it takes to fight at a lost battle's node again (#253). */

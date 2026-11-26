@@ -1238,6 +1238,23 @@ body.mobile .coach .coach-row button { padding: 3px 10px; font-size: 12px; }
 button.danger, button.danger:hover:not(:disabled) { border-color: var(--hot); color: var(--hot); }
 .run-debrief.win h2 { color: #b4ff39; }
 .run-debrief.lose h2 { color: var(--hot); }
+/* The debrief (#272): what changed, one line at a time; the biomass gained counts up. */
+.run-debrief .deb-lines { margin: 10px 0 6px; }
+.run-debrief .deb-line { opacity: 0; transform: translateY(6px); }
+.run-debrief .deb-line.in { opacity: 1; transform: none; transition: opacity 0.35s ease-out, transform 0.35s ease-out; }
+.run-debrief .deb-line.died b { color: var(--hot); }
+.run-debrief .deb-line.wounded b { color: var(--warn); }
+.run-debrief .deb-line.retry-note, .run-debrief .deb-line.hint { margin: 4px 0; }
+.debrief-biomass { font-size: 15px; color: #b4ff39; }
+.debrief-biomass b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.deb-total .total { font-variant-numeric: tabular-nums; }
+.brood-events.minor { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .run-debrief .deb-line { transition: none; } }
+/* On a phone the lines scroll inside the card, with the button always in reach. */
+body.mobile .run-debrief { width: 100%; max-height: calc(100dvh - 24px); display: flex; flex-direction: column; }
+body.mobile .run-debrief .deb-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+body.mobile .run-debrief .row.end { flex: none; margin-top: 8px; }
+body.mobile .run-debrief .row.end button { flex: 1; }
 /* The defeat screen (#271): the run map fills the screen, the Bloom closing over your camp, a card over it. */
 .screen.defeat { overflow: hidden; justify-content: flex-end; padding-right: max(16px, 7vw); }
 .defeat-map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }

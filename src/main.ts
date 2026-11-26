@@ -31,7 +31,8 @@ import { mapGrid } from './ui/mapGrid';
 import { FORTIFY } from './sim/fortify';
 import { deleteRun, finishRun, listRuns, loadHistory, loadRun, saveRun } from './campaign/store';
 import { abandoned, noteBattle, settleAbandoned, settledElsewhere, startBattle } from './campaign/inBattle';
-import { recruitPick, rewardPick, runDebrief, runHub, runMap, starterPick, type MapIntro } from './ui/campaign';
+import { runDebrief } from './ui/debrief';
+import { recruitPick, rewardPick, runHub, runMap, starterPick, type MapIntro } from './ui/campaign';
 import { runHowTo } from './ui/runtour';
 import { loadGuide, saveGuide, wantsCampHint, wantsTour, type TourKind } from './campaign/tour';
 import { DemoOverlay } from './ui/demo';
@@ -744,16 +745,20 @@ class App {
     this.showTurnDebrief(r.state, r.node, report.won, from, res);
   }
 
-  /** A battle's turn is settled: its sounds, then the debrief. `left`: the page closed mid-battle (#266). */
+  /** A battle's turn is settled: the debrief, which plays each line's sound as it shows (#272). `left`: the page closed mid-battle (#266). */
   private showTurnDebrief(run: RunState, node: number, won: boolean, from: number, res: TurnResult, left = false): void {
-    this.runSounds(res);
-    if (run.status === 'lost') return this.showDefeat(run, res, left);
+    if (run.status === 'lost') {
+      this.runSounds(res);
+      return this.showDefeat(run, res, left);
+    }
     if (run.status === 'won') this.sfx.victory();
+    // A restore has no lines to carry its sound.
+    if (res.checkpoint === 'restored') this.sfx.checkpointRestart();
     this.setModal(
       runDebrief(run, run.nodes[node], won, res, {
         next: () => this.showRunMap(run, this.runIntro(from, res)),
         hub: () => this.leaveRun(run),
-      }, left),
+      }, this.sfx, left),
     );
   }
 

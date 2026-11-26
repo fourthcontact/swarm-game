@@ -940,6 +940,13 @@ export class AudioEngine {
     this.tone(this.ui, this.note(19), 0.3, 'triangle', 0.04, { delay: 0.1 });
   }
 
+  /** Debrief (#272): biomass gained, a bright upward shimmer. */
+  biomassGained(): void {
+    if (!this.ctx) return;
+    this.noise(this.ui, 0.18, 0.035, 'bandpass', 2400, 800);
+    [12, 19, 24].forEach((s, i) => this.tone(this.ui, this.note(s), 0.25, 'triangle', 0.035, { delay: i * 0.05 }));
+  }
+
   /** Camp: a brood healed. */
   broodHealed(): void {
     if (!this.ctx) return;

@@ -7,6 +7,15 @@ const pct = (x: number) => `${Math.round(x * 100)}%`;
 const HOLD_S = DOMINATION.ticks / TICK_HZ;
 const EVERY = SIEGE.boonEvery === 2 ? 'other wave' : `${SIEGE.boonEvery} waves`;
 
+/** Each battle kind's name. */
+export const KIND_LABEL: Record<RunNode['kind'], string> = {
+  start: 'Your camp',
+  conquest: 'Conquest',
+  domination: 'Domination',
+  hold: 'Hold the line',
+  finale: "The Bloom's heart",
+};
+
 /** What each battle kind asks of you, in words: the node card and the battle briefings (#218) share it. */
 export const KIND_TEXT: Record<RunNode['kind'], string> = {
   start: 'Where the run began.',

@@ -1634,7 +1634,7 @@ export function recruitPick(run: RunState, sfx: AudioEngine, h: { done: () => vo
     .map(
       (b) => `<button class="brood-pick" data-b="${b.id}">
         <span class="glyph">${KIND_GLYPH[b.kind]}</span>
-        <span class="who"><b>Replace ${esc(b.name)}</b><small>${KIND_NAME[b.kind]} · ${b.size}/${b.cap}${b.wounded ? ' · wounded' : ''}${b.wins ? ` · ${b.wins} win${b.wins === 1 ? '' : 's'}` : ''}${strainText(b, ' · ✦ ')} · leaves the run</small></span>
+        <span class="who"><b>Replace ${esc(b.name)}</b><small>${KIND_NAME[b.kind]} · ${b.size}/${b.cap}${b.wounded ? ' · wounded' : ''}${b.wins ? ` · ${b.wins} win${b.wins === 1 ? '' : 's'}` : ''}${strainText(b, ' · ✦ ')}</small></span>
       </button>`,
     )
     .join('');

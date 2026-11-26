@@ -177,7 +177,7 @@ export const TOUR: TourStep[] = [
   {
     id: 'camp',
     title: 'The camp',
-    text: "Battles pay biomass (top right). Spend it at the camp, by tapping your swarm: heal and grow broods, and unlock nest types. Until a nest type is unlocked, it only makes Swarmers for you. After each win you also pick a reward, kept on the Rewards tab.",
+    text: "Battles pay biomass (top right). Spend it at the camp, with ⛺ or by tapping your swarm: heal and grow broods, and unlock nest types. Until a nest type is unlocked, it only makes Swarmers for you. After each win you also pick a reward, kept on the Rewards tab.",
     focus: (run) => at(run, run.at, 360),
     camp: 'unlocks',
     dom: '.run-stats',
@@ -209,7 +209,7 @@ export const CAMP_HINT: TourStep[] = [
   {
     id: 'earned',
     title: 'Biomass',
-    text: (run) => `You have ${run.biomass} biomass (at the top). Battles pay it, a loss pays a little, and it carries over from battle to battle. Spend it at the camp: tap your swarm.`,
+    text: (run) => `You have ${run.biomass} biomass (at the top). Battles pay it, a loss pays a little, and it carries over from battle to battle. Spend it at the camp: tap ⛺ or your swarm.`,
     focus: (run) => at(run, run.at, 360),
     marks: (run) => [ring(run, run.at, 1.6)],
     dom: '.run-stats',
@@ -250,7 +250,7 @@ export const GLOSSARY: { term: string; text: string }[] = [
   { term: 'Strongholds', text: "A warlord's walled, crowned node. Take its citadel to win: double pay, better rewards, the domain broken and the warlord's trophy perk." },
   { term: 'Broods', text: 'Your squads, kept between battles: up to four, three fielded per fight. Winners grow and turn veteran after two wins; losers are wounded and cut down.' },
   { term: 'Strains', text: 'Rewards that attach to one brood of the right kind, two slots each.' },
-  { term: 'The camp', text: 'Tap your swarm to open it. Spend biomass to heal and grow broods and to unlock nest types and Nova; see your run-wide rewards.' },
+  { term: 'The camp', text: 'Tap ⛺ at the top, or your swarm, to open it. Spend biomass to heal and grow broods and to unlock nest types and Nova; see your run-wide rewards.' },
   { term: 'Rewards', text: 'After each win, pick one: a strain, a power variant, a perk or a pact.' },
   { term: 'Battles', text: 'Conquest (beat the rivals or hold most nests; the Bloom surges in late), Domination (score on key nests), Hold the line (keep your walled capital against Bloom waves), strongholds, and the heart.' },
 ];

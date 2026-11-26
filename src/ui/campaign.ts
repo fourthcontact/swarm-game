@@ -3,8 +3,8 @@
  * map (move, preview, watch the Bloom advance) and the after-battle debrief.
  */
 
-import { whyNot } from './whynot';
-import { growNote, lossNote, lossShort } from './costs';
+import { growNote, lossNote } from './costs';
+import { nodeActions, nodeStatus } from './nodestatus';
 import type { AudioEngine } from '../audio/engine';
 import { mountCreatures } from '../art/creature';
 import { BLOOM, BloomField, MapFx, battleMapCanvas, cardMap, bloomGapView, sigilCanvas, drawIcon, glyph, nodeRadius, tendrils, wobble } from './runmapfx';
@@ -23,14 +23,11 @@ import {
   maxFielded,
   moves,
   canStep,
-  canRetry,
   reachable,
-  retriesLeft,
   retryCost,
   sealedMoves,
   stranded,
   wayOn,
-  needsBattle,
   rerollCost,
   rerollOffer,
   revealed,
@@ -61,6 +58,7 @@ import { mountTour, runHowTo, type Tour } from './runtour';
 import { onRival, rivalStrip, showBigMap, showRival } from './battlepeek';
 import { el, esc } from './dom';
 import { countUp } from './countUp';
+import { mapSheet } from './mapsheet';
 import { FACTION_HEX } from '../content/factions';
 import { DIFFICULTY_NAMES } from '../sim/ai/bot';
 import { isMobile } from './mobile';
@@ -124,8 +122,11 @@ function fitScale(cw: number, ch: number): number {
   return Math.min(cw / (MAP_W + pad * 2), ch / (MAP_H + pad * 2));
 }
 
-/** The view for a camera, clamping it so the map can't be dragged away. */
-function camView(cw: number, ch: number, cam: Cam): View {
+/**
+ * The view for a camera, clamping it so the map can't be dragged away.
+ * `pad`: canvas pixels at the bottom hidden under a sheet (#272); the map clamps to the part above it.
+ */
+function camView(cw: number, ch: number, cam: Cam, pad = 0): View {
   cam.zoom = Math.max(1, Math.min(ZOOM_MAX, cam.zoom));
   const s = fitScale(cw, ch) * cam.zoom;
   const clamp = (c: number, size: number, span: number) => {
@@ -133,7 +134,9 @@ function camView(cw: number, ch: number, cam: Cam): View {
     return half * 2 >= size + 80 ? size / 2 : Math.max(half - 40, Math.min(size + 40 - half, c));
   };
   cam.cx = clamp(cam.cx, MAP_W, cw);
-  cam.cy = clamp(cam.cy, MAP_H, ch);
+  // Clamp the point at the middle of the visible part, then shift back to the canvas's middle.
+  const shift = pad / s / 2;
+  cam.cy = clamp(cam.cy - shift, MAP_H, ch - pad) + shift;
   return { s, ox: cw / 2 - cam.cx * s, oy: ch / 2 - cam.cy * s };
 }
 
@@ -265,7 +268,7 @@ const EDGE_GLOW: readonly (readonly [number, number])[] = [
 export function drawMap(
   c: HTMLCanvasElement,
   run: RunState,
-  opts: { bloomT: number; selected: number | null; hover: number | null; time: number; fresh: Set<number>; freshT: number; thumb?: boolean; cam?: Cam; fx?: MapFx; ghost?: boolean; fog?: HTMLCanvasElement; peek?: readonly number[]; fade?: number },
+  opts: { bloomT: number; selected: number | null; hover: number | null; time: number; fresh: Set<number>; freshT: number; thumb?: boolean; cam?: Cam; fx?: MapFx; ghost?: boolean; fog?: HTMLCanvasElement; peek?: readonly number[]; fade?: number; pad?: number },
 ): View {
   // Thumbnails stay sharp; the live map follows the Resolution setting.
   const dpr = opts.thumb ? window.devicePixelRatio || 1 : renderScale();
@@ -275,7 +278,7 @@ export function drawMap(
     c.height = ch;
   }
   const g = c.getContext('2d')!;
-  const v = camView(cw, ch, opts.cam ?? { cx: MAP_W / 2, cy: MAP_H / 2, zoom: 1 });
+  const v = camView(cw, ch, opts.cam ?? { cx: MAP_W / 2, cy: MAP_H / 2, zoom: 1 }, opts.pad);
   const X = (x: number) => v.ox + x * v.s, Y = (y: number) => v.oy + y * v.s;
   const u = opts.thumb ? dpr * 0.35 : dpr; // pixel unit
   const known = revealed(run);
@@ -956,15 +959,15 @@ export function runMap(
     <div class="screen modal runmap">
       <div class="runmap-frame">
         <header>
-          <div class="run-title"><b>${esc(run.seedText)}</b><span>${RUN_DIFFICULTY[difficultyOf(run)].name} · turn ${run.turn}</span></div>
-          <div class="run-stats"></div>
+          <div class="run-title"><b>${esc(run.seedText)}</b><span class="diff">${RUN_DIFFICULTY[difficultyOf(run)].name} ·</span><span class="turn">turn ${run.turn}</span></div>
+          <button class="small run-stats" data-a="camp" title="The camp: spend biomass to heal, grow and unlock"></button>
           <button class="small" data-a="howto" title="How to play" aria-label="How to play">?</button>
           <button class="small" data-a="leave">← All runs</button>
         </header>
         <div class="map-wrap">
           <canvas class="map-fog"></canvas>
           <canvas class="map-canvas"></canvas>
-          <p class="map-hint">Tap a highlighted territory next to your swarm. Each move is a battle, then the Bloom advances. Tap your swarm to open the camp. Drag to look around.</p>
+          <p class="map-hint">Tap a highlighted territory next to your swarm. Each move is a battle, then the Bloom advances. Open the camp with ⛺ or by tapping your swarm. Drag to look around.</p>
           <div class="node-veil" hidden><div class="card node-card" role="dialog"></div></div>
         </div>
       </div>
@@ -980,12 +983,15 @@ export function runMap(
   const close = () => {
     selected = null;
     veil.hidden = true;
+    sheet.drop();
   };
   const stats = m.querySelector('.run-stats') as HTMLElement;
-  // Only biomass up here: your broods live in the camp (tap your swarm).
-  const showStats = () => (stats.innerHTML = `<span class="biomass" title="Biomass: spend it at the camp"><b>${run.biomass}</b> biomass</span>`);
+  // Biomass on the camp's own button (#272): what you have, and where to spend it. Your broods live in the camp.
+  const showStats = () => (stats.innerHTML = `<span class="camp-icon" aria-hidden="true">⛺</span><span class="biomass"><b>${run.biomass}</b> <span class="lbl">biomass</span></span>`);
   showStats();
   m.querySelector('[data-a=leave]')!.addEventListener('click', h.leave);
+  // Not mid-march (the move's broods and price are already set) nor mid-tour (it drives the camp itself).
+  stats.addEventListener('click', () => run.status === 'active' && !moving && !active && camp());
   let campEl: CampEl | null = null;
   const closeCamp = () => {
     campEl?.remove();
@@ -1003,7 +1009,6 @@ export function runMap(
     m.querySelector('.map-wrap')!.append(campEl);
   };
 
-  const open = moves(run);
   let selected: number | null = null;
   let hover: number | null = null;
   let view: View = { s: 1, ox: 0, oy: 0 };
@@ -1031,13 +1036,24 @@ export function runMap(
   const t0 = performance.now();
   let swallowSounded = false;
 
+  const sheet = mapSheet({
+    canvas: c,
+    panel,
+    veil,
+    screen: m,
+    dpr: renderScale,
+    cam: () => cam,
+    view: () => view,
+    flying: () => fly?.to ?? null,
+    glide: (to) => cam && (fly = { from: { ...cam }, to, t0: performance.now() }),
+    settle: (to) => camView(c.width, c.height, to),
+    chosen: () => (selected === null ? null : run.nodes[selected]),
+  });
+
   const preview = () => {
     veil.hidden = selected === null || run.status !== 'active';
-    if (veil.hidden || selected === null) return;
+    if (veil.hidden || selected === null) return sheet.drop();
     const n = run.nodes[selected];
-    const canGo = open.includes(n.id);
-    const isSealed = !!run.sealed?.includes(n.id);
-    const canReopen = sealedMoves(run).includes(n.id);
     const taken = run.visited.includes(n.id);
     const dead = run.swallowed.includes(n.id);
     const rows: string[] = [];
@@ -1081,18 +1097,27 @@ export function runMap(
       }
       if (n.checkpoint) rows.push(`<dt>Checkpoint</dt><dd>${run.checkpointUsed ? 'Already used' : 'Reach it to save the run here, once'}</dd>`);
     }
-    const status = n.id === run.at ? 'Your swarm is here, at its camp.' : dead ? 'Lost to the Bloom.' : isSealed ? (canReopen ? retryNote(run, n.id).replace(' from the map', '') : '🔒 You lost here: sealed. Only a step away can you pay to fight here again.') : taken ? 'Taken: march through without a battle.' : canGo ? (needsBattle(run, n.id) ? lossShort(run, n.id) : '') : whyNot(run, n.id);
-    const verb = !canGo ? null : needsBattle(run, n.id) ? 'Fight' : 'March';
+    const status = nodeStatus(run, n.id);
+    const act = nodeActions(run, n.id);
+    const verb = act.verb;
     panel.classList.remove('wide');
+    // Head, body, foot (#272): what this node means for you up top, the buttons always in reach, the details scroll between.
     panel.innerHTML = `
-      <button class="icon close" data-a="close" aria-label="Close">✕</button>
-      <h3 class="with-sigil"><span class="sigil-slot"></span>${fortress ? 'Stronghold' : KIND_LABEL[n.kind]}</h3>
-      <p>${fortress ? `Take the warlord's citadel to win, even with rivals left. Or: ${(FORT_TEXT[n.kind] ?? KIND_TEXT[n.kind]).charAt(0).toLowerCase()}${(FORT_TEXT[n.kind] ?? KIND_TEXT[n.kind]).slice(1)}` : KIND_TEXT[n.kind]}</p>
-      ${rows.length ? `<dl>${rows.join('')}</dl>` : ''}
-      ${status ? `<p class="hint">${status}</p>` : ''}
-      ${verb ? `<button class="primary" data-a="go">${verb}</button>` : ''}
-      ${canReopen && retriesLeft(run) > 0 ? `<button class="primary" data-a="retry" ${canRetry(run, n.id) ? '' : 'disabled'}>Fight again · ${retryCost(run, n.id)} biomass</button>` : ''}
-      ${n.id === run.at ? '<button class="primary" data-a="camp">Open camp</button>' : ''}`;
+      <div class="nc-head">
+        <button class="icon close" data-a="close" aria-label="Close">✕</button>
+        <h3 class="with-sigil"><span class="sigil-slot"></span>${fortress ? 'Stronghold' : KIND_LABEL[n.kind]}</h3>
+        ${status ? `<p class="hint nc-status">${status}</p>` : ''}
+      </div>
+      <div class="nc-body">
+        <p>${fortress ? `Take the warlord's citadel to win, even with rivals left. Or: ${(FORT_TEXT[n.kind] ?? KIND_TEXT[n.kind]).charAt(0).toLowerCase()}${(FORT_TEXT[n.kind] ?? KIND_TEXT[n.kind]).slice(1)}` : KIND_TEXT[n.kind]}</p>
+        ${rows.length ? `<dl>${rows.join('')}</dl>` : ''}
+      </div>
+      ${verb || act.retry || act.camp ? `<div class="nc-foot">
+        ${verb ? `<button class="primary" data-a="go">${verb}</button>` : ''}
+        ${act.retry ? `<button class="primary" data-a="retry" ${act.retry.can ? '' : 'disabled'}>Fight again · ${act.retry.cost} biomass</button>` : ''}
+        ${act.camp ? '<button class="primary" data-a="camp">Open camp</button>' : ''}
+      </div>` : ''}`;
+    requestAnimationFrame(() => sheet.fit(n.y));
     mountCreatures(panel, foes.map((r) => r.creature), 40);
     panel.querySelector('.sigil-slot')?.append(sigilCanvas(run, n, 36, FACTION_HEX[run.color]));
     // The battle's actual map: you in your colour, the rivals in theirs.
@@ -1136,15 +1161,20 @@ export function runMap(
         .join('');
       const count = picked.size;
       panel.classList.remove('wide');
+      // Head, body, foot like the node card (#272): Back and Fight stay in reach on a short sheet.
       panel.innerHTML = `
-        <button class="icon close" data-a="close" aria-label="Close">✕</button>
-        <h3>Field your broods</h3>
+        <div class="nc-head">
+          <button class="icon close" data-a="close" aria-label="Close">✕</button>
+          <h3>Field your broods</h3>
+        </div>
+        <div class="nc-body">
         <div class="facing"><span class="hint">Facing</span>${rivalStrip(foes, true, '', true)}</div>
         <p class="hint">${max === 1 ? `One only (Lone wolf), at ${LONE_WOLF}× size, as veterans` : `Up to ${max}`}. They are your starting army: win and each keeps its own survivors, a share of the new units of its kind, and 2 more, but one with none of its kind left is wiped out; lose and they're wounded and ${lossText(RUN_DIFFICULTY[difficultyOf(run)].lossKeep)}.</p>
         <div class="brood-list">${rows}</div>
         ${fitOnes.length ? '' : '<p class="hint">Every brood is wounded. A militia of 10 Swarmers fights this one, and no brood is at risk.</p>'}
         <p class="retry-note">${lossNote(run, n.id)}</p>
-        <div class="row">
+        </div>
+        <div class="row nc-foot">
           <button data-a="back">Back</button>
           <button class="primary grow1" data-a="fight" ${fitOnes.length && !count ? 'disabled' : ''}>${count ? `Fight with ${count} brood${count > 1 ? 's' : ''}` : 'Fight with the militia'}${run.sealed?.includes(n.id) ? ` · ${retryCost(run, n.id)} biomass` : ''}</button>
         </div>`;
@@ -1199,7 +1229,7 @@ export function runMap(
     // Keep the map point under (px, py) where it is.
     const mx = (px - view.ox) / view.s, my = (py - view.oy) / view.s;
     cam.zoom *= factor;
-    const v = camView(c.width, c.height, cam);
+    const v = camView(c.width, c.height, cam, sheet.pad());
     cam.cx += mx - (px - v.ox) / v.s;
     cam.cy += my - (py - v.oy) / v.s;
   };
@@ -1367,7 +1397,7 @@ export function runMap(
   if (intro && intro.from !== run.bloom.time) sfx.bloomAdvance();
   const frame = () => {
     if (!m.isConnected) {
-      if (performance.now() - t0 > 3000) return; // never attached
+      if (performance.now() - t0 > 3000) return sheet.dispose(); // never attached, or gone
       requestAnimationFrame(frame);
       return;
     }
@@ -1405,7 +1435,7 @@ export function runMap(
     }
     // Hidden or not laid out yet: nothing to draw (and a zero-size view would break the fog).
     if (c.clientWidth > 0 && c.clientHeight > 0) {
-      view = drawMap(c, run, { bloomT, selected, hover, time, fresh, freshT, cam: cam ?? undefined, fx, ghost: k >= 1 && !moving, fog, peek });
+      view = drawMap(c, run, { bloomT, selected, hover, time, fresh, freshT, cam: cam ?? undefined, fx, ghost: k >= 1 && !moving, fog, peek, pad: sheet.pad() });
       drawMarks(time);
     }
     requestAnimationFrame(frame);
@@ -1440,18 +1470,6 @@ export function lordItem(run: RunState, { id, what }: TurnResult['warlords'][num
   return what === 'broken'
     ? `${name}'s domain is broken. Trophy: <b>${esc(TRAITS[w.trait].trophy.name)}</b>. ${esc(TRAITS[w.trait].trophy.text)}.`
     : `The Bloom ate ${name}'s stronghold: the warlord is gone.`;
-}
-
-/** What it takes to fight at a lost battle's node again (#253). */
-export function retryNote(run: RunState, id: number): string {
-  const left = retriesLeft(run);
-  const cost = retryCost(run, id);
-  if (left === 0)
-    return RUN_DIFFICULTY[difficultyOf(run)].retries === 0
-      ? '🔒 This battle is sealed. Brutal allows no retries: find another way to the heart.'
-      : '🔒 This battle is sealed, and your retries are spent: find another way to the heart.';
-  const tries = left === 1 ? 'your last retry this run' : `${left} retries left this run`;
-  return `🔒 This battle is sealed. To fight here again, pay <b>${cost} biomass</b> from the map (${tries}). You have ${run.biomass}.`;
 }
 
 // ---- starter pick -----------------------------------------------------------

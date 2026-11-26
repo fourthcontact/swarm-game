@@ -1252,7 +1252,7 @@ body.mobile:not(.land) .node-veil { align-items: flex-end; padding: 0; backgroun
 body.mobile:not(.land) .node-card:not(.wide) { width: 100%; max-height: 62%; padding: 14px 16px calc(12px + env(safe-area-inset-bottom, 0px)); border-radius: 14px 14px 0 0; border-bottom: 0; }
 body.mobile:not(.land) .node-card.wide { margin: 8px; max-height: calc(100% - 16px); }
 body.mobile:not(.land) .node-card .nc-foot { display: flex; gap: 8px; }
-body.mobile:not(.land) .node-card .nc-foot button.primary { flex: 1; margin-top: 8px; }
+body.mobile:not(.land) .node-card .nc-foot:not(.row) button.primary { flex: 1; margin-top: 8px; }
 /* The tour's coach card sits at the foot: while touring, the sheet goes to the top, above it. */
 body.mobile:not(.land) .runmap.touring .node-veil { align-items: flex-start; }
 body.mobile:not(.land) .runmap.touring .node-card:not(.wide) { max-height: calc(100% - var(--tour-h, 160px) - 28px); border-radius: 0 0 14px 14px; border-bottom: 1px solid var(--line); }

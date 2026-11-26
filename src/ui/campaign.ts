@@ -58,6 +58,7 @@ import { mountTour, runHowTo, type Tour } from './runtour';
 import { onRival, rivalStrip, showBigMap, showRival } from './battlepeek';
 import { el, esc } from './dom';
 import { countUp } from './countUp';
+import { mapSheet } from './mapsheet';
 import { FACTION_HEX } from '../content/factions';
 import { DIFFICULTY_NAMES } from '../sim/ai/bot';
 import { isMobile } from './mobile';
@@ -982,14 +983,15 @@ export function runMap(
   const close = () => {
     selected = null;
     veil.hidden = true;
-    dropSheet();
+    sheet.drop();
   };
   const stats = m.querySelector('.run-stats') as HTMLElement;
   // Biomass on the camp's own button (#272): what you have, and where to spend it. Your broods live in the camp.
   const showStats = () => (stats.innerHTML = `<span class="camp-icon" aria-hidden="true">⛺</span><span class="biomass"><b>${run.biomass}</b> <span class="lbl">biomass</span></span>`);
   showStats();
   m.querySelector('[data-a=leave]')!.addEventListener('click', h.leave);
-  stats.addEventListener('click', () => run.status === 'active' && camp());
+  // Not mid-march (the move's broods and price are already set) nor mid-tour (it drives the camp itself).
+  stats.addEventListener('click', () => run.status === 'active' && !moving && !active && camp());
   let campEl: CampEl | null = null;
   const closeCamp = () => {
     campEl?.remove();
@@ -1034,35 +1036,23 @@ export function runMap(
   const t0 = performance.now();
   let swallowSounded = false;
 
-  /**
-   * A phone held upright shows the node card as a sheet over the map's lower part (#272).
-   * The map then pans within the strip above it, and glides the chosen node into that strip.
-   */
-  let sheetPad = 0;
-  const clearSheet = (n: RunNode) => {
-    const cls = document.body.classList;
-    const sheet = !veil.hidden && !panel.classList.contains('wide') && cls.contains('mobile') && !cls.contains('land') && !m.classList.contains('touring');
-    const top = panel.getBoundingClientRect().top - c.getBoundingClientRect().top;
-    const k = dpr();
-    sheetPad = sheet && top > 0 ? Math.max(0, c.height - top * k) : 0;
-    if (!cam || !sheetPad) return;
-    const y = (view.oy + n.y * view.s) / k;
-    if (y > 24 && y < top - 40) return;
-    fly = { from: { ...cam }, to: { ...cam, cy: n.y + sheetPad / view.s / 2 }, t0: performance.now() };
-  };
-  /** The sheet is gone: glide back to where the whole canvas allows. */
-  const dropSheet = () => {
-    if (!sheetPad) return;
-    sheetPad = 0;
-    if (!cam) return;
-    const to = { ...cam };
-    camView(c.width, c.height, to);
-    fly = { from: { ...cam }, to, t0: performance.now() };
-  };
+  const sheet = mapSheet({
+    canvas: c,
+    panel,
+    veil,
+    screen: m,
+    dpr: renderScale,
+    cam: () => cam,
+    view: () => view,
+    flying: () => fly?.to ?? null,
+    glide: (to) => cam && (fly = { from: { ...cam }, to, t0: performance.now() }),
+    settle: (to) => camView(c.width, c.height, to),
+    chosen: () => (selected === null ? null : run.nodes[selected]),
+  });
 
   const preview = () => {
     veil.hidden = selected === null || run.status !== 'active';
-    if (veil.hidden || selected === null) return dropSheet();
+    if (veil.hidden || selected === null) return sheet.drop();
     const n = run.nodes[selected];
     const taken = run.visited.includes(n.id);
     const dead = run.swallowed.includes(n.id);
@@ -1127,7 +1117,7 @@ export function runMap(
         ${act.retry ? `<button class="primary" data-a="retry" ${act.retry.can ? '' : 'disabled'}>Fight again · ${act.retry.cost} biomass</button>` : ''}
         ${act.camp ? '<button class="primary" data-a="camp">Open camp</button>' : ''}
       </div>` : ''}`;
-    requestAnimationFrame(() => clearSheet(n));
+    requestAnimationFrame(() => sheet.fit(n.y));
     mountCreatures(panel, foes.map((r) => r.creature), 40);
     panel.querySelector('.sigil-slot')?.append(sigilCanvas(run, n, 36, FACTION_HEX[run.color]));
     // The battle's actual map: you in your colour, the rivals in theirs.
@@ -1171,15 +1161,20 @@ export function runMap(
         .join('');
       const count = picked.size;
       panel.classList.remove('wide');
+      // Head, body, foot like the node card (#272): Back and Fight stay in reach on a short sheet.
       panel.innerHTML = `
-        <button class="icon close" data-a="close" aria-label="Close">✕</button>
-        <h3>Field your broods</h3>
+        <div class="nc-head">
+          <button class="icon close" data-a="close" aria-label="Close">✕</button>
+          <h3>Field your broods</h3>
+        </div>
+        <div class="nc-body">
         <div class="facing"><span class="hint">Facing</span>${rivalStrip(foes, true, '', true)}</div>
         <p class="hint">${max === 1 ? `One only (Lone wolf), at ${LONE_WOLF}× size, as veterans` : `Up to ${max}`}. They are your starting army: win and each keeps its own survivors, a share of the new units of its kind, and 2 more, but one with none of its kind left is wiped out; lose and they're wounded and ${lossText(RUN_DIFFICULTY[difficultyOf(run)].lossKeep)}.</p>
         <div class="brood-list">${rows}</div>
         ${fitOnes.length ? '' : '<p class="hint">Every brood is wounded. A militia of 10 Swarmers fights this one, and no brood is at risk.</p>'}
         <p class="retry-note">${lossNote(run, n.id)}</p>
-        <div class="row">
+        </div>
+        <div class="row nc-foot">
           <button data-a="back">Back</button>
           <button class="primary grow1" data-a="fight" ${fitOnes.length && !count ? 'disabled' : ''}>${count ? `Fight with ${count} brood${count > 1 ? 's' : ''}` : 'Fight with the militia'}${run.sealed?.includes(n.id) ? ` · ${retryCost(run, n.id)} biomass` : ''}</button>
         </div>`;
@@ -1234,7 +1229,7 @@ export function runMap(
     // Keep the map point under (px, py) where it is.
     const mx = (px - view.ox) / view.s, my = (py - view.oy) / view.s;
     cam.zoom *= factor;
-    const v = camView(c.width, c.height, cam, sheetPad);
+    const v = camView(c.width, c.height, cam, sheet.pad());
     cam.cx += mx - (px - v.ox) / v.s;
     cam.cy += my - (py - v.oy) / v.s;
   };
@@ -1402,7 +1397,7 @@ export function runMap(
   if (intro && intro.from !== run.bloom.time) sfx.bloomAdvance();
   const frame = () => {
     if (!m.isConnected) {
-      if (performance.now() - t0 > 3000) return; // never attached
+      if (performance.now() - t0 > 3000) return sheet.dispose(); // never attached, or gone
       requestAnimationFrame(frame);
       return;
     }
@@ -1440,7 +1435,7 @@ export function runMap(
     }
     // Hidden or not laid out yet: nothing to draw (and a zero-size view would break the fog).
     if (c.clientWidth > 0 && c.clientHeight > 0) {
-      view = drawMap(c, run, { bloomT, selected, hover, time, fresh, freshT, cam: cam ?? undefined, fx, ghost: k >= 1 && !moving, fog, peek, pad: sheetPad });
+      view = drawMap(c, run, { bloomT, selected, hover, time, fresh, freshT, cam: cam ?? undefined, fx, ghost: k >= 1 && !moving, fog, peek, pad: sheet.pad() });
       drawMarks(time);
     }
     requestAnimationFrame(frame);

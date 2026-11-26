@@ -33,6 +33,18 @@ export function lossShort(run: RunState, id: number): string {
   return retriesLeft(run) === 0 ? "Lose and it's sealed for good." : `Lose and it's sealed: a retry costs ${retryCost(run, id)} biomass.`;
 }
 
+/** What it takes to fight at a lost battle's node again (#253). */
+export function retryNote(run: RunState, id: number): string {
+  const left = retriesLeft(run);
+  const cost = retryCost(run, id);
+  if (left === 0)
+    return RUN_DIFFICULTY[difficultyOf(run)].retries === 0
+      ? '🔒 This battle is sealed. Brutal allows no retries: find another way to the heart.'
+      : '🔒 This battle is sealed, and your retries are spent: find another way to the heart.';
+  const tries = left === 1 ? 'your last retry this run' : `${left} retries left this run`;
+  return `🔒 This battle is sealed. To fight here again, pay <b>${cost} biomass</b> from the map (${tries}). You have ${run.biomass}.`;
+}
+
 /** Raising a brood's cap costs more each time (COST.grow). */
 export function growNote(): string {
   const at = (grows: number) => COST.grow({ grows } as Brood);

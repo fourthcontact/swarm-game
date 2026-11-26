@@ -1146,8 +1146,12 @@ body.mobile .coach .coach-row button { padding: 3px 10px; font-size: 12px; }
 .run-title { flex: 1; min-width: 0; display: flex; gap: 12px; align-items: baseline; }
 .run-title b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; letter-spacing: 0.06em; }
 .run-title span, .run-stats .biomass { color: var(--muted); font-size: 14px; }
+.run-title .diff { margin-right: -8px; }
+/* The camp's button carries the biomass (#272). */
+.runmap header .run-stats { display: inline-flex; gap: 8px; align-items: baseline; white-space: nowrap; }
+.run-stats .camp-icon { font-size: 15px; }
+.runmap.touring header .run-stats { pointer-events: none; }
 .run-stats .biomass b { color: #b4ff39; font-size: 16px; font-variant-numeric: tabular-nums; }
-.run-stats { display: flex; gap: 12px; align-items: baseline; }
 .map-wrap { position: relative; min-height: 0; overflow: hidden; }
 .map-wrap > canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
 .map-fog { pointer-events: none; }
@@ -1161,6 +1165,12 @@ body.mobile .coach .coach-row button { padding: 3px 10px; font-size: 12px; }
 .node-veil { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(4, 5, 12, 0.35); }
 .node-veil[hidden] { display: none; }
 .node-card { position: relative; width: min(360px, 100%); padding: 20px 22px; }
+/* Head, body, foot (#272): the status and the buttons stay in view; the details scroll between them. */
+.node-card:not(.wide) { display: flex; flex-direction: column; max-height: 100%; }
+.node-card .nc-head, .node-card .nc-foot { flex: none; }
+.node-card .nc-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.node-card .nc-status { margin: 4px 0 2px; }
+.node-card .nc-foot { padding-top: 2px; }
 .node-card .close { position: absolute; top: 10px; right: 10px; }
 .node-card h3 { margin: 0 34px 6px 0; font-size: 14px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
 .node-card p { line-height: 1.45; margin: 6px 0; font-size: 14px; }
@@ -1224,6 +1234,7 @@ body.mobile .coach .coach-row button { padding: 3px 10px; font-size: 12px; }
 .runmap.touring .camp-card { overflow: auto; max-height: 100%; }
 .runmap.touring .node-veil { align-items: flex-start; }
 .runmap.touring .node-card { max-height: calc(100% - 170px); overflow: hidden; }
+.runmap.touring .node-card .nc-body { overflow: hidden; }
 .runmap header [data-a=howto] { min-width: 34px; font-weight: bold; }
 .run-howto.in-map { position: absolute; inset: 0; z-index: 9; }
 .run-howto .card { max-height: 100%; overflow: auto; }
@@ -1233,8 +1244,18 @@ body.mobile .coach .coach-row button { padding: 3px 10px; font-size: 12px; }
 @media (max-width: 520px) { .glossary { grid-template-columns: 1fr; gap: 2px; } .glossary dd { margin-bottom: 8px; } }
 @media (max-width: 520px) {
   .runmap header { gap: 10px; padding: 8px 12px; }
-  .run-title span { display: none; }
+  /* Narrow: the turn stays; the seed (on the debrief and in the hub) and the difficulty go, and the camp's label shortens. */
+  .run-title b, .run-title .diff, .run-stats .lbl { display: none; }
 }
+/* A phone held upright (#272): the node card is a sheet over the map's lower part, so the map stays in view. */
+body.mobile:not(.land) .node-veil { align-items: flex-end; padding: 0; background: linear-gradient(180deg, transparent 30%, rgba(4, 5, 12, 0.4)); }
+body.mobile:not(.land) .node-card:not(.wide) { width: 100%; max-height: 62%; padding: 14px 16px calc(12px + env(safe-area-inset-bottom, 0px)); border-radius: 14px 14px 0 0; border-bottom: 0; }
+body.mobile:not(.land) .node-card.wide { margin: 8px; max-height: calc(100% - 16px); }
+body.mobile:not(.land) .node-card .nc-foot { display: flex; gap: 8px; }
+body.mobile:not(.land) .node-card .nc-foot button.primary { flex: 1; margin-top: 8px; }
+/* The tour's coach card sits at the foot: while touring, the sheet goes to the top, above it. */
+body.mobile:not(.land) .runmap.touring .node-veil { align-items: flex-start; }
+body.mobile:not(.land) .runmap.touring .node-card:not(.wide) { max-height: calc(100% - var(--tour-h, 160px) - 28px); border-radius: 0 0 14px 14px; border-bottom: 1px solid var(--line); }
 button.danger, button.danger:hover:not(:disabled) { border-color: var(--hot); color: var(--hot); }
 .run-debrief.win h2 { color: #b4ff39; }
 .run-debrief.lose h2 { color: var(--hot); }
@@ -1589,7 +1610,7 @@ body.land .card h2 { margin-bottom: 10px; font-size: 19px; }
 /* Run map: full width, a thin header, the node card as a panel beside the map. */
 body.land .runmap header { padding: 4px calc(12px + env(safe-area-inset-right, 0px)) 4px calc(12px + env(safe-area-inset-left, 0px)); gap: 10px; }
 body.land .node-veil { justify-content: flex-end; align-items: stretch; padding: 8px calc(8px + env(safe-area-inset-right, 0px)) 8px 8px; background: linear-gradient(90deg, transparent 40%, rgba(4, 5, 12, 0.45)); }
-body.land .node-card { width: min(360px, 48%); max-height: 100%; overflow-y: auto; padding: 14px 16px; }
+body.land .node-card { width: min(360px, 48%); max-height: 100%; padding: 14px 16px; }
 body.land .map-hint { bottom: 8px; }
 body.land .map-wrap:has(.node-veil:not([hidden])) .map-hint { display: none; }
 /* Camp: tabs in a row across the top, the body full width. */

@@ -1242,6 +1242,12 @@ body.mobile .coach .coach-row button { padding: 3px 10px; font-size: 12px; }
 .glossary dt { color: var(--accent); font-weight: bold; }
 .glossary dd { margin: 0; }
 @media (max-width: 520px) { .glossary { grid-template-columns: 1fr; gap: 2px; } .glossary dd { margin-bottom: 8px; } }
+/* The map key (#287): each node state, drawn by the map's own code. */
+.run-howto h3 { margin: 16px 0 6px; font-size: 15px; color: var(--accent); }
+.node-key { list-style: none; margin: 0 0 12px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px 16px; }
+.node-key li { display: flex; align-items: center; gap: 10px; line-height: 1.3; }
+.node-key .node-swatch { flex: none; }
+body.mobile .node-key { grid-template-columns: 1fr; }
 @media (max-width: 520px) {
   .runmap header { gap: 10px; padding: 8px 12px; }
   /* Narrow: the turn stays; the seed (on the debrief and in the hub) and the difficulty go, and the camp's label shortens. */

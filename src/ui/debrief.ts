@@ -125,7 +125,7 @@ function reveal(m: HTMLElement, list: Step[], biomass: number, sfx: AudioEngine)
   let timer = 0;
   const done = () => {
     clearTimeout(timer);
-    document.removeEventListener('keydown', skip, true);
+    document.removeEventListener('keydown', key, true);
     m.removeEventListener('pointerdown', skip);
   };
   const tick = () => {
@@ -140,7 +140,12 @@ function reveal(m: HTMLElement, list: Step[], biomass: number, sfx: AudioEngine)
     while (at < items.length) show(at++, false);
     finishers.forEach((f) => f());
   }
+  // Modifiers and the app's own keys (M mutes, ` shows perf) don't count as "show the rest".
+  const key = (e: KeyboardEvent) => {
+    if (['Shift', 'Control', 'Alt', 'Meta', 'm', 'M', '`'].includes(e.key) || e.metaKey || e.ctrlKey || e.altKey) return;
+    skip();
+  };
   m.addEventListener('pointerdown', skip);
-  document.addEventListener('keydown', skip, true);
+  document.addEventListener('keydown', key, true);
   timer = window.setTimeout(tick, FIRST);
 }

@@ -187,7 +187,7 @@ Persistent named squads, each of one unit kind: Swarmers, Shields, Spears or Rai
 - **New broods** come from rescue rewards, often in warlord domains.
 - **The run ends** when you have no broods left to field, or no way on: the heart is out of reach, and no sealed node in reach can be reopened, with the biomass you have or could still earn in a battle in reach (#253). The map checks this too, and so does closing the camp, since spending can leave you short of a retry's price. The camp warns you first. The checkpoint saves you once.
 - **The debrief** (#272): after a battle the run goes on from, a card says what changed (`src/ui/debrief.ts`).
-  - Lines come in order of importance (`src/campaign/debrief.ts`): warlords broken or eaten, broods wiped out, wounded, rescued, made veteran, then the biomass gained or salvaged, a sealed node's retry note and a checkpoint reached. Broods that grew, held or recovered come last, in a quieter list.
+  - Lines come in order of importance (`src/campaign/debrief.ts`): warlords broken or eaten, broods wiped out, wounded, rescued, made veteran, then the biomass gained or salvaged, a sealed node's retry note and a checkpoint reached. Broods that grew, shrank, held or recovered come last, in a quieter list.
   - The lines show one at a time, each with its sound, and the biomass counts up. A tap or a key shows the rest at once. With reduced motion, everything shows at once.
 - **The defeat screen** (#271): a lost run gets a full screen (`src/ui/defeat.ts`), not a debrief card.
   - The run map fills it: the Bloom rolls over your camp and your swarm dims out. With reduced motion, only the last frame.

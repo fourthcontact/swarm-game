@@ -72,7 +72,6 @@ const SIZE_LABEL = { small: 'Small', medium: 'Medium', large: 'Large' } as const
 const CAVE_LABEL = { off: 'Open', belt: 'Cave belt', full: 'Caves' } as const;
 const TERRAIN_LABEL = { none: 'No terrain', light: 'Light terrain', standard: 'Terrain', heavy: 'Heavy terrain' } as const;
 
-export { KIND_LABEL };
 /** What a lost battle leaves a brood, in words. */
 const lossText = (keep: number) => (keep === 0.5 ? 'halved' : `cut to ${Math.round(keep * 100)}%`);
 

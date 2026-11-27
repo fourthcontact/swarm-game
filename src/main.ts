@@ -40,6 +40,7 @@ import { Hud } from './ui/hud';
 import { ScreenAwake } from './ui/wakeLock';
 import { initUiMode, isMobile, markMobileNoticeSeen, onCellData, setUiMode, shouldShowMobileNotice } from './ui/mobile';
 import { canResign, resign, resignCard, resignText, RESIGN_LABEL } from './ui/resign';
+import { endNetSpec, leaveConfirm, LEAVE_ROOM } from './ui/roomExit';
 import { buildSetup, campaignMenu, randomSetup, skirmishMenu, endButtons, endScreen, howToPlay, loadPrefs, mainMenu, menuCard, missionBriefing, missionDebrief, mobileNotice, NEXT_STEP_TEXT, pauseMenu, quickSetup, randomSeed, settingsScreen, skirmishSetup, tutorialMenu, type SuggestedMatch } from './ui/screens';
 import { creatureGrid } from './ui/creatures';
 import { BUILD } from './game/recording';
@@ -1382,11 +1383,14 @@ class App {
     this.renderRoom();
   }
 
-  /** A room's end-screen buttons: Back to lobby is the host's (#233: it moves with hosting). */
-  private endNet(room: Room): { buttons: { label: string; primary?: boolean; on: () => void }[]; note?: string } {
-    const buttons: { label: string; primary?: boolean; on: () => void }[] = [{ label: 'Leave room', on: () => this.leaveRoom() }];
-    if (room.host) buttons.push({ label: 'Back to lobby', primary: true, on: () => this.backToRoom() });
-    return { buttons, note: room.host ? undefined : 'The host can bring everyone back to the lobby.' };
+  /**
+   * A room's end-screen buttons: Back to lobby is the host's (#233: it moves
+   * with hosting). A guest waits, and leaving asks first (#292).
+   */
+  private endNet(room: Room): { buttons: { label: string; primary?: boolean; on: () => void }[]; note?: string; wait?: boolean } {
+    const spec = endNetSpec(room.host);
+    const leave = () => this.confirmNet(leaveConfirm('end'), () => this.leaveRoom(), () => this.endEl && this.setModal(this.endEl));
+    return { ...spec, buttons: spec.buttons.map((b) => ({ ...b, on: b.id === 'lobby' ? () => this.backToRoom() : leave })) };
   }
 
   /** Who sits in a seat: their character's name in a room, else the colour's. */
@@ -1560,9 +1564,9 @@ class App {
     // first: nobody at all, the match saved (#191); then no host to be had, rejoining or not; there's a way out
     if (this.lostTouch && !g.result) {
       const text = this.saveFailed ? 'Lost touch with everyone. Reconnecting… (couldn’t save this match)' : 'Lost touch with everyone. Reconnecting… Your match is saved: open the room link again to pick it up.';
-      return h.banner(text, [{ label: 'Leave', on: () => this.leaveRoom() }]);
+      return h.banner(text, [{ label: LEAVE_ROOM, on: () => this.leaveRoom() }]);
     }
-    if (this.stalled && !g.result) return h.banner('Lost touch with the host. Finding a new one…', [{ label: 'Leave', on: () => this.leaveRoom() }]);
+    if (this.stalled && !g.result) return h.banner('Lost touch with the host. Finding a new one…', [{ label: LEAVE_ROOM, on: () => this.leaveRoom() }]);
     // paused with the menu closed: say so, and count down a resume, so it never looks like a hang (#198)
     const pause = this.pauseLine(g);
     if (pause) return h.banner(pause);
@@ -1571,7 +1575,7 @@ class App {
     if (g.session.seatBot && !g.spectating && !g.result) return h.banner('An Easy bot is playing for you. Taking your seat back…');
     if (!g.spectating || g.result) return h.banner(null);
     const p = g.placing;
-    h.banner(`You've been defeated${p ? ` · ${ordinal(p.place)} of ${p.of}` : ''}. Watching the rest of the match.`, [{ label: 'Leave', on: () => this.leaveMatch() }]);
+    h.banner(`You've been defeated${p ? ` · ${ordinal(p.place)} of ${p.of}` : ''}. Watching the rest of the match.`, [{ label: LEAVE_ROOM, on: () => this.askLeave('watching') }]);
   }
 
   /**
@@ -1590,7 +1594,17 @@ class App {
     }
     // nobody can take over right now (the others are hidden, or still rejoining): say what leaving does
     if (m.livePeers().length === 0) return this.leaveRoom();
-    this.confirmNet('Leave the match?', 'Nobody can take over hosting right now, so leaving ends the match for everyone else. To stop it and keep the room, use End match instead.', 'Leave and end it', () => this.leaveRoom());
+    this.confirmNet({ title: 'Leave the match?', text: 'Nobody can take over hosting right now, so leaving ends the match for everyone else. To stop it and keep the room, use End match instead.', yes: 'Leave and end it' }, () => this.leaveRoom());
+  }
+
+  /**
+   * Ask before leaving a room mid-match (#292): from the pause menu, or the
+   * banner while watching after a defeat; no goes back to where it came from.
+   */
+  private askLeave(where: 'match' | 'watching'): void {
+    const next = this.match?.host ? this.nextHostSeat() : -1;
+    const back = where === 'match' ? undefined : () => this.closeNetMenu();
+    this.confirmNet(leaveConfirm(where, next >= 0 ? this.seatName(next) : undefined), () => this.leaveMatch(), back);
   }
 
   /** Who'd be host if we left now (#190): whoever runs the match, or if that's us, who'd run it next. */
@@ -1602,28 +1616,29 @@ class App {
 
   /** Host (#183): stop the match for everyone and bring them back to the room, to change settings or let someone in. */
   private endMatch(): void {
-    this.confirmNet('End the match for everyone?', 'Everyone goes back to the room, where you can change the settings or let someone new join, then start again.', 'End match', () => this.backToRoom());
+    this.confirmNet({ title: 'End the match for everyone?', text: 'Everyone goes back to the room, where you can change the settings or let someone new join, then start again.', yes: 'End match' }, () => this.backToRoom());
   }
 
   /** Host (#183): the same room and settings, from the start. */
   private restartMatch(): void {
-    this.confirmNet('Restart the match for everyone?', 'Same room, same settings, from the start.', 'Restart', () => {
+    this.confirmNet({ title: 'Restart the match for everyone?', text: 'Same room, same settings, from the start.', yes: 'Restart' }, () => {
       this.backToRoom(true);
       (this.room?.lobby as HostLobby | null)?.start();
     });
   }
 
-  /** A yes/no card over the match; no goes back to the menu it came from. */
-  private confirmNet(title: string, text: string, yes: string, on: () => void): void {
+  /** A yes/no card over the match; no goes `back` (by default, to the menu it came from). */
+  private confirmNet(c: { title: string; text: string; yes: string; no?: string }, on: () => void, back = () => this.openNetMenu('user')): void {
     if (!this.mp || !this.game) return;
-    this.netMenu = 'user';
+    // over the end screen there's no menu to go back to (#292): nothing to mark as open
+    if (!this.endShown) this.netMenu = 'user';
     this.netNote = null;
     this.netPlayers = null;
     this.input.enabled = false;
     this.setModal(
-      this.mp.messageCard(title, text, [
-        { label: yes, primary: true, on },
-        { label: 'Back', on: () => this.openNetMenu('user') },
+      this.mp.messageCard(c.title, c.text, [
+        { label: c.yes, primary: true, on },
+        { label: c.no ?? 'Back', on: back },
       ]),
     );
   }
@@ -1645,13 +1660,14 @@ class App {
       more: [
         ...(host ? [{ label: 'End match', on: () => this.endMatch() }] : []),
         // Resignation (#291): out now, then watch; the last human out ends the match.
-        ...(canResign(g) ? [{ label: RESIGN_LABEL, on: () => this.confirmNet('Resign?', resignText(true), RESIGN_LABEL, () => {
+        ...(canResign(g) ? [{ label: RESIGN_LABEL, on: () => this.confirmNet({ title: 'Resign?', text: resignText(true), yes: RESIGN_LABEL }, () => {
           this.toggleNetMenu();
           resign(g);
         }) }] : []),
       ],
-      quit: () => this.leaveMatch(),
-      quitLabel: host && this.nextHostSeat() >= 0 ? `Leave (hosting passes to ${this.seatName(this.nextHostSeat())})` : 'Leave match',
+      // it's the room you leave, not just the match (#292): say so, and ask
+      quit: () => this.askLeave('match'),
+      quitLabel: host && this.nextHostSeat() >= 0 ? `${LEAVE_ROOM} (hosting passes to ${this.seatName(this.nextHostSeat())})` : LEAVE_ROOM,
       audio: this.sfx,
       teams: teamLayout(g.world, g.human).team ? teamsList(g.world, g.human) : undefined,
       players: '<div class="players"></div>',

@@ -950,7 +950,7 @@ export function endScreen(
   victory: boolean,
   h: { rematch: () => void; newMap: () => void; quit: () => void },
   /** a networked match (#162): players' character names, and its own buttons in place of rematch / new map / menu */
-  net?: { names: Record<number, string>; buttons: { label: string; primary?: boolean; on: () => void }[]; note?: string },
+  net?: { names: Record<number, string>; buttons: { label: string; primary?: boolean; on: () => void }[]; note?: string; wait?: boolean },
 ): HTMLDivElement {
   const nameOf = (id: number) => net?.names[id] ?? FACTION_NAMES[id];
   const rows = w.factions
@@ -990,9 +990,10 @@ export function endScreen(
 }
 
 /** A networked end screen's buttons and note (#233: again when hosting moves, the rest of the screen left as it is). */
-export function endButtons(m: HTMLElement, net: { buttons: { label: string; primary?: boolean; on: () => void }[]; note?: string }): void {
+export function endButtons(m: HTMLElement, net: { buttons: { label: string; primary?: boolean; on: () => void }[]; note?: string; wait?: boolean }): void {
   const row = m.querySelector('.row.end')!;
-  row.innerHTML = net.note ? `<span class="hint">${net.note}</span>` : '';
+  // a guest waiting on the host gets a spinner (#292), so the screen doesn't look stuck
+  row.innerHTML = net.note ? `<span class="hint${net.wait ? ' wait' : ''}">${net.wait ? '<i class="spin small" aria-hidden="true"></i>' : ''}${net.note}</span>` : '';
   for (const b of net.buttons) {
     const btn = document.createElement('button');
     btn.textContent = b.label;

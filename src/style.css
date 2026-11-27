@@ -264,6 +264,9 @@ button.crown.on { background: rgba(255, 209, 102, 0.16); }
 .connecting .hint { margin: 0; font-size: 14px; }
 .spin { width: 36px; height: 36px; border-radius: 50%; border: 3px solid var(--line-strong); border-top-color: var(--accent); animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+/* a guest on the end screen, waiting on the host (#292) */
+.spin.small { display: inline-block; flex: none; width: 14px; height: 14px; border-width: 2px; }
+.hint.wait { display: inline-flex; align-items: center; gap: 8px; }
 
 .invite-row { display: flex; gap: 14px; align-items: center; }
 .invite-link { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }

@@ -165,7 +165,7 @@ const dec = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
 // ---- commands ---------------------------------------------------------------
 
-const CMD_TYPES = ['move', 'rally', 'upgrade', 'surge', 'nova', 'fortify', 'barrage', 'blink', 'lockdown', 'summon', 'boon'] as const;
+const CMD_TYPES = ['move', 'rally', 'upgrade', 'surge', 'nova', 'fortify', 'barrage', 'blink', 'lockdown', 'summon', 'boon', 'resign'] as const;
 const CMD_INDEX = new Map<string, number>(CMD_TYPES.map((t, i) => [t, i]));
 
 function coord(w: Writer, v: number): void {
@@ -244,6 +244,8 @@ function writeCmd(w: Writer, c: Command): void {
       return;
     case 'boon':
       w.uv(c.k);
+      return;
+    case 'resign':
   }
 }
 
@@ -283,6 +285,8 @@ function readCmd(r: Reader, p: number): Command {
       return { t, p, secs: r.f64() };
     case 'boon':
       return { t, p, k: r.uv() };
+    case 'resign':
+      return { t, p };
     default:
       throw new Bad();
   }

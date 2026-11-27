@@ -98,6 +98,8 @@ export function sanitizeCommand(w: CommandLimits, c: unknown): Command | null {
       return { t: 'summon', p, secs: clamp(r.secs, SUMMON_SECS.min, SUMMON_SECS.max) };
     case 'boon':
       return isInt(r.k) && r.k >= 0 && r.k < BOON_CHOICES ? { t: 'boon', p, k: r.k } : null;
+    case 'resign':
+      return { t: 'resign', p };
     default:
       return null;
   }

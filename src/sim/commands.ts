@@ -24,7 +24,9 @@ export type Command =
   /** tutorial missions only (endless worlds): bring the next wild swarm forward to `secs` from now */
   | { t: 'summon'; p: number; secs: number }
   /** Hold the line (#67): take boon `k` of the current offer */
-  | { t: 'boon'; p: number; k: number };
+  | { t: 'boon'; p: number; k: number }
+  /** Resignation (#291): p gives up; its dots die and its nests go unowned */
+  | { t: 'resign'; p: number };
 
 /** True if p holds (fully controls) a nest that grants this power. */
 export function hasPower(w: World, p: number, power: NestPower): boolean {
@@ -403,6 +405,31 @@ export function applyCommand(w: World, cmd: Command): Reject | null {
       pushFx(w, 'lockdown', n.x, n.y, c.p, n.r, n.id, n.owner);
       return null;
     }
+    case 'resign':
+      resign(w, c.p);
+      return null;
   }
   return null;
+}
+
+/**
+ * Resignation (#291): knock p out now rather than at the next victory check,
+ * so a skirmish ends on the same frame. checkVictory ends the match once no
+ * human is left standing.
+ */
+function resign(w: World, p: number): void {
+  for (let i = 0; i < w.n; i++) if (w.alive[i] && w.owner[i] === p) removeUnit(w, i);
+  for (const n of w.nests) {
+    if (n.owner !== p) continue;
+    n.owner = -1;
+    n.control = 0;
+    n.feedProgress = 0;
+    pushFx(w, 'neutralize', n.x, n.y, p, n.r, n.id, p);
+  }
+  const f = w.factions[p];
+  f.resigned = true;
+  f.eliminated = true;
+  f.eliminatedTick = w.tick;
+  f.energy = 0;
+  pushFx(w, 'eliminated', 0, 0, p);
 }

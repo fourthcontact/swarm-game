@@ -23,6 +23,7 @@ const CMDS: Command[] = [
   { t: 'lockdown', p: 2, nest: 0 },
   { t: 'summon', p: 2, secs: 12.345 },
   { t: 'boon', p: 2, k: 2 },
+  { t: 'resign', p: 2 },
 ];
 
 const roundTrip = (m: Msg) => decodeMsg(encodeMsg(m));

@@ -55,6 +55,8 @@ export interface Faction {
   energy: number;
   eliminated: boolean;
   eliminatedTick: number;
+  /** gave up (#291); also eliminated */
+  resigned: boolean;
   prodMult: number;
   /** hard army limit on top of supply (tutorial opponents); 0 = none */
   unitCap: number;
@@ -435,7 +437,7 @@ export class World {
   /** the opening (#235): through this tick the world waits, then the match starts */
   opening = 0;
   /** how the match ended */
-  winReason: '' | 'elimination' | 'domination' | 'heart' | 'citadel' | 'held' | 'fallen' = '';
+  winReason: '' | 'elimination' | 'domination' | 'heart' | 'citadel' | 'held' | 'fallen' | 'resign' = '';
   /** consecutive ticks each team has held the domination share; with key nests, the team past KEYS.threat (its score) */
   readonly domTicks = new Int32Array(NEUTRAL_TEAM + 1);
   /** per-faction unit counts sampled once a second */
@@ -458,6 +460,7 @@ export class World {
         energy: 0,
         eliminated: false,
         eliminatedTick: 0,
+        resigned: false,
         prodMult: 1,
         unitCap: 0,
         nestTypes: ALL_NEST_TYPES,

@@ -959,7 +959,7 @@ export function endScreen(
       (f) => `<tr class="${f.id === human ? 'me' : ''}${f.eliminated ? ' dead' : ''}">
         <td><i style="background:${FACTION_HEX[f.id]}"></i>${nameOf(f.id)}${f.id === human ? ' (you)' : ''}</td>
         <td>${f.stats.spawned}</td><td>${f.stats.kills}</td><td>${f.stats.lost}</td><td>${f.stats.captured}</td><td>${f.stats.peak}</td>
-        <td>${f.eliminated ? formatTime(f.eliminatedTick) : '—'}</td></tr>`,
+        <td>${f.eliminated ? formatTime(f.eliminatedTick) + (f.resigned ? ' (resigned)' : '') : '—'}</td></tr>`,
     )
     .join('');
   const m = el(`
@@ -1009,6 +1009,8 @@ function how(w: World, human: number): string {
     if (ds.length <= 1) return 'The line broke: <b>your capital fell</b>';
     return `The line broke: <b>${ds.every((d) => d.lostAt >= 0) ? 'every capital fell' : 'a capital fell'}</b>`;
   }
+  // Resignation (#291): a resigner's own team never wins, so say what they did.
+  if (w.factions[human]?.resigned) return 'You <b>resigned</b>';
   if (w.winnerTeam < 0 || !w.winReason) return w.factions[human]?.eliminated ? 'You were eliminated' : 'Match over';
   const mine = w.winnerTeam === w.teamOf[human];
   const face = w.factions.find((f) => f.active && f.id !== NEUTRAL && f.team === w.winnerTeam && !f.eliminated) ?? w.factions.find((f) => f.team === w.winnerTeam);
@@ -1016,6 +1018,7 @@ function how(w: World, human: number): string {
   if (w.winReason === 'heart') return `${who} destroyed <b>the Bloom's heart</b>`;
   if (w.winReason === 'citadel') return `${who} took <b>the citadel</b>`;
   if (w.winReason === 'held') return `${who} <b>held the line</b>`;
+  if (w.winReason === 'resign') return `${who} won when the last player <b>resigned</b>`;
   return `${who} won by <b>${w.winReason}</b>`;
 }
 

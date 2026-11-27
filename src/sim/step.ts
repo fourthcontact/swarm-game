@@ -194,6 +194,7 @@ function checkVictory(w: World): void {
   }
 
   if (w.endless) return;
+  if (resignVictory(w, aliveTeams)) return;
   // Hold the line (#67): only the siege decides it.
   if (w.siege && siegeVictory(w)) return;
   // A stronghold (#100): a human's side taking the citadel wins, whoever else is left
@@ -251,6 +252,45 @@ function checkVictory(w: World): void {
       w.domTicks[t] = 0;
     }
   }
+}
+
+/**
+ * Resignation (#291): once someone has resigned and no human is left standing,
+ * the match ends. The winner is the live team with no resigned member that holds
+ * the most nests, then the most dots, then the lowest id; nobody if none qualifies.
+ * With one live team left, elimination decides as usual: that team wins even with a
+ * resigned member, since the last human may have been beaten rather than resigned.
+ */
+function resignVictory(w: World, aliveTeams: Set<number>): boolean {
+  let resigned = false, standing = false;
+  for (let f = 0; f < NEUTRAL; f++) {
+    const fa = w.factions[f];
+    if (!fa.active) continue;
+    if (fa.resigned) resigned = true;
+    if (fa.human && !fa.eliminated) standing = true;
+  }
+  if (!resigned || standing || aliveTeams.size <= 1) return false;
+  let best = -1, bestNests = -1, bestDots = -1;
+  for (const t of aliveTeams) {
+    let dots = 0, out = false;
+    for (let f = 0; f < NEUTRAL; f++) {
+      const fa = w.factions[f];
+      if (!fa.active || fa.team !== t) continue;
+      if (fa.resigned) out = true;
+      dots += w.unitCount[f];
+    }
+    if (out) continue;
+    const nests = nestsByTeam[t];
+    if (nests > bestNests || (nests === bestNests && (dots > bestDots || (dots === bestDots && t < best)))) {
+      best = t;
+      bestNests = nests;
+      bestDots = dots;
+    }
+  }
+  w.over = true;
+  w.winnerTeam = best;
+  w.winReason = 'resign';
+  return true;
 }
 
 /** Whether a team has a human seat in the match. */

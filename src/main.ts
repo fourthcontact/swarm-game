@@ -40,7 +40,7 @@ import { Hud } from './ui/hud';
 import { ScreenAwake } from './ui/wakeLock';
 import { initUiMode, isMobile, markMobileNoticeSeen, onCellData, setUiMode, shouldShowMobileNotice } from './ui/mobile';
 import { canResign, resign, resignCard, resignText, RESIGN_LABEL } from './ui/resign';
-import { endNetSpec, leaveConfirm, LEAVE_ROOM } from './ui/roomExit';
+import { endNetSpec, leaveConfirm, LEAVE_ROOM, netMenuSpec, type NetMenuId } from './ui/roomExit';
 import { buildSetup, campaignMenu, randomSetup, skirmishMenu, endButtons, endScreen, howToPlay, loadPrefs, mainMenu, menuCard, missionBriefing, missionDebrief, mobileNotice, NEXT_STEP_TEXT, pauseMenu, quickSetup, randomSeed, settingsScreen, skirmishSetup, tutorialMenu, type SuggestedMatch } from './ui/screens';
 import { creatureGrid } from './ui/creatures';
 import { BUILD } from './game/recording';
@@ -1656,24 +1656,28 @@ class App {
     this.netMenu = kind;
     this.input.enabled = false;
     this.input.reset();
+    const on: Record<NetMenuId, () => void> = {
+      // Resignation (#291): out now, then watch; the last human out ends the match.
+      resign: () => this.confirmNet({ title: 'Resign?', text: resignText(true), yes: RESIGN_LABEL }, () => {
+        this.toggleNetMenu();
+        resign(g);
+      }),
+      // it's the room you leave, not just the match (#292): say so, and ask
+      leave: () => this.askLeave('match'),
+      // the host can stop or restart the match without leaving the room (#183)
+      restart: () => this.restartMatch(),
+      end: () => this.endMatch(),
+    };
+    // playing buttons for everyone, then the host's in a group of their own (#292)
+    const spec = netMenuSpec(host, canResign(g), RESIGN_LABEL);
+    const buttons = (bs: typeof spec.main) => bs.map((b) => ({ label: b.label, on: on[b.id] }));
     const m = pauseMenu({
       title: pauses || g.session.paused ? 'Paused' : 'Menu',
       note: ' ',
       resume: () => this.toggleNetMenu(),
       resumeLabel: pauses ? 'Resume' : 'Back to the match',
-      // the host can stop or restart the match without leaving the room (#183)
-      restart: host ? () => this.restartMatch() : undefined,
-      more: [
-        ...(host ? [{ label: 'End match', on: () => this.endMatch() }] : []),
-        // Resignation (#291): out now, then watch; the last human out ends the match.
-        ...(canResign(g) ? [{ label: RESIGN_LABEL, on: () => this.confirmNet({ title: 'Resign?', text: resignText(true), yes: RESIGN_LABEL }, () => {
-          this.toggleNetMenu();
-          resign(g);
-        }) }] : []),
-      ],
-      // it's the room you leave, not just the match (#292): say so, and ask
-      quit: () => this.askLeave('match'),
-      quitLabel: host && this.nextHostSeat() >= 0 ? `${LEAVE_ROOM} (hosting passes to ${this.seatName(this.nextHostSeat())})` : LEAVE_ROOM,
+      more: buttons(spec.main),
+      hosting: buttons(spec.hosting),
       audio: this.sfx,
       teams: teamLayout(g.world, g.human).team ? teamsList(g.world, g.human) : undefined,
       players: '<div class="players"></div>',

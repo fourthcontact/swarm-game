@@ -44,3 +44,31 @@ export function leaveConfirm(where: 'end' | 'watching' | 'match', nextHost?: str
   parts.push(where === 'end' ? 'To play again with them, stay: the host brings everyone back to the lobby.' : 'To play again with them, stay until the end: the host brings everyone back to the lobby.');
   return { title: 'Leave the room?', text: parts.join(' '), yes: LEAVE_ROOM, no: where === 'watching' ? 'Keep watching' : 'Stay' };
 }
+
+export const RESTART_MATCH = 'Restart match';
+/** the host's End match says where it goes (#292) */
+export const END_MATCH = 'End match (back to lobby)';
+/** the host's way out: the room goes on with someone else hosting, or ends (#292) */
+export const LEAVE_HOSTING = 'Leave room (stop hosting)';
+
+export type NetMenuId = 'resign' | 'leave' | 'restart' | 'end';
+export interface NetMenuSpec {
+  /** everyone's buttons, after Resume */
+  main: { id: NetMenuId; label: string }[];
+  /** the host's, in a group of their own so they read apart from playing (#292) */
+  hosting: { id: NetMenuId; label: string }[];
+}
+
+/** A room match's menu buttons: playing ones for everyone, then the host's. */
+export function netMenuSpec(host: boolean, resign: boolean, resignLabel: string): NetMenuSpec {
+  const main: NetMenuSpec['main'] = resign ? [{ id: 'resign', label: resignLabel }] : [];
+  if (!host) return { main: [...main, { id: 'leave', label: LEAVE_ROOM }], hosting: [] };
+  return {
+    main,
+    hosting: [
+      { id: 'restart', label: RESTART_MATCH },
+      { id: 'end', label: END_MATCH },
+      { id: 'leave', label: LEAVE_HOSTING },
+    ],
+  };
+}

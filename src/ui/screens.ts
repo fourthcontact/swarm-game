@@ -904,7 +904,8 @@ export function skirmishSetup(onStart: (setup: MatchSetup, scenario?: string) =>
 export function pauseMenu(h: {
   resume: () => void;
   restart?: () => void;
-  quit: () => void;
+  /** left out when the way out is in `hosting` (#292) */
+  quit?: () => void;
   audio: AudioEngine;
   quitLabel?: string;
   teams?: string;
@@ -914,6 +915,8 @@ export function pauseMenu(h: {
   players?: string;
   /** more buttons after Restart (a room host's End match, #183) */
   more?: { label: string; on: () => void }[];
+  /** a room host's buttons (#292), in a group of their own below the playing ones */
+  hosting?: { label: string; on: () => void }[];
 }): HTMLDivElement {
   const m = el(`
     <div class="screen modal dim">
@@ -924,8 +927,9 @@ export function pauseMenu(h: {
           <button class="primary" data-a="resume">${h.resumeLabel ?? 'Resume'}</button>
           ${h.restart ? '<button data-a="restart">Restart match</button>' : ''}
           ${(h.more ?? []).map((b, i) => `<button data-more="${i}">${b.label}</button>`).join('')}
-          <button data-a="quit">${h.quitLabel ?? 'Quit to menu'}</button>
+          ${h.quit ? `<button data-a="quit">${h.quitLabel ?? 'Quit to menu'}</button>` : ''}
         </div>
+        ${h.hosting?.length ? `<h3>Hosting</h3><div class="menu-buttons hosting">${h.hosting.map((b, i) => `<button data-host="${i}">${b.label}</button>`).join('')}</div>` : ''}
         ${h.players ? `<h3>Players</h3>${h.players}` : ''}
         ${h.teams ? `<h3>Teams</h3>${h.teams}` : ''}
         <div class="fields"></div>
@@ -940,7 +944,8 @@ export function pauseMenu(h: {
   m.querySelector('[data-a=resume]')!.addEventListener('click', h.resume);
   if (h.restart) m.querySelector('[data-a=restart]')!.addEventListener('click', h.restart);
   (h.more ?? []).forEach((b, i) => m.querySelector(`[data-more="${i}"]`)!.addEventListener('click', b.on));
-  m.querySelector('[data-a=quit]')!.addEventListener('click', h.quit);
+  if (h.quit) m.querySelector('[data-a=quit]')!.addEventListener('click', h.quit);
+  (h.hosting ?? []).forEach((b, i) => m.querySelector(`[data-host="${i}"]`)!.addEventListener('click', b.on));
   return m;
 }
 

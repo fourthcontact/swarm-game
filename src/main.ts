@@ -1602,7 +1602,10 @@ class App {
    * banner while watching after a defeat; no goes back to where it came from.
    */
   private askLeave(where: 'match' | 'watching'): void {
-    const next = this.match?.host ? this.nextHostSeat() : -1;
+    const m = this.match;
+    // running it with nobody able to take over: leaveMatch asks its own question ("Leave and end it"), so don't ask twice
+    if (m?.runner && !this.game?.world.over && m.livePeers().length > 0 && m.successorSeat() < 0) return this.leaveMatch();
+    const next = m?.host ? this.nextHostSeat() : -1;
     const back = where === 'match' ? undefined : () => this.closeNetMenu();
     this.confirmNet(leaveConfirm(where, next >= 0 ? this.seatName(next) : undefined), () => this.leaveMatch(), back);
   }
@@ -1628,8 +1631,11 @@ class App {
   }
 
   /** A yes/no card over the match; no goes `back` (by default, to the menu it came from). */
-  private confirmNet(c: { title: string; text: string; yes: string; no?: string }, on: () => void, back = () => this.openNetMenu('user')): void {
+  private confirmNet(c: { title: string; text: string; yes: string; no?: string }, on: () => void, back?: () => void): void {
     if (!this.mp || !this.game) return;
+    // back to the same kind of menu: a guest's 'pause' menu still closes itself when the host resumes (#292)
+    const kind = this.netMenu ?? 'user';
+    back ??= () => this.openNetMenu(kind === 'pause' && this.game?.session.paused ? 'pause' : 'user');
     // over the end screen there's no menu to go back to (#292): nothing to mark as open
     if (!this.endShown) this.netMenu = 'user';
     this.netNote = null;

@@ -63,7 +63,7 @@ export function desyncCard(o: {
         <div class="menu-buttons">
           ${o.host ? '<button class="primary" data-a="resync" disabled>Resync and continue</button><button data-a="resume">Play on as is</button>' : ''}
           <button data-a="download">Download report</button>
-          <button data-a="leave">Leave match</button>
+          <button data-a="leave">Leave room</button>
         </div>
       </div>
     </div>`);

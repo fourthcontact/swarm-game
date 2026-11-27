@@ -5,6 +5,7 @@
 
 import { growNote, lossNote } from './costs';
 import { nodeActions, nodeStatus } from './nodestatus';
+import { RESCUE, SEALED_SHUT, drawNodeBase, drawNodeTop, nodeCtx, nodeLook, nodeState } from './nodelook';
 import type { AudioEngine } from '../audio/engine';
 import { mountCreatures } from '../art/creature';
 import { BLOOM, BloomField, MapFx, battleMapCanvas, cardMap, bloomGapView, sigilCanvas, drawIcon, glyph, nodeRadius, tendrils, wobble } from './runmapfx';
@@ -23,9 +24,7 @@ import {
   maxFielded,
   moves,
   canStep,
-  reachable,
   retryCost,
-  sealedMoves,
   stranded,
   wayOn,
   rerollCost,
@@ -226,33 +225,6 @@ function drawFog(f: HTMLCanvasElement, g: CanvasRenderingContext2D, run: RunStat
   g.globalAlpha = 1;
 }
 
-/** A lost battle's node (#253): amber, like a warning. */
-const SEALED = '#e0a040';
-
-/** A small padlock centred on (x, y), `s` its half-width. */
-function lock(g: CanvasRenderingContext2D, x: number, y: number, s: number): void {
-  g.fillStyle = '#06070f';
-  g.beginPath();
-  g.arc(x, y, s * 1.7, 0, Math.PI * 2);
-  g.fill();
-  g.strokeStyle = g.fillStyle = SEALED;
-  g.lineWidth = s * 0.35;
-  g.beginPath();
-  g.arc(x, y - s * 0.25, s * 0.55, Math.PI, 0);
-  g.stroke();
-  g.fillRect(x - s * 0.8, y - s * 0.25, s * 1.6, s * 1.15);
-}
-
-function star(g: CanvasRenderingContext2D, x: number, y: number, r: number): void {
-  g.beginPath();
-  for (let k = 0; k < 10; k++) {
-    const a = -Math.PI / 2 + (k * Math.PI) / 5;
-    const rr = k % 2 ? r * 0.45 : r;
-    g.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
-  }
-  g.closePath();
-}
-
 /** The Bloom edge's glow: [line width, alpha] from the outside in, a close match for `shadowBlur = 14`. */
 const EDGE_GLOW: readonly (readonly [number, number])[] = [
   [32, 0.016],
@@ -356,22 +328,17 @@ export function drawMap(
   }
 
   const me = FACTION_HEX[run.color];
-  const open = new Set(moves(run));
-  const isSwallowed = (id: number) => run.swallowed.includes(id) && (!opts.fresh.has(id) || opts.freshT >= 1);
-  // Paths and nodes you passed by (#95) go dim: only what you can still reach stays bright.
-  const reach = opts.thumb ? null : reachable(run);
-  // A lost battle's node (#253): sealed, and open again only for biomass.
-  const sealed = new Set(run.sealed ?? []);
-  const reopen = new Set(sealedMoves(run));
-  const missed = (id: number) => !!reach && !reach.has(id) && !run.visited.includes(id) && !run.swallowed.includes(id) && !sealed.has(id) && id !== run.heart;
+  const ctx = nodeCtx(run, opts);
+  const { open, reach, sealed, swallowed: isSwallowed } = ctx;
 
   // Warlord domains (#66): a soft wash in the warlord's colour over its nodes
-  // and the links between them; grey once broken, the Bloom's once eaten.
+  // and the links between them; grey once broken. An eaten domain has none (#287):
+  // a faint Bloom-pink wash read too much like the grey, and its nodes show the Bloom anyway.
   for (const w of run.warlords ?? []) {
     if (!w.nodes.some((id) => known.has(id))) continue;
-    const eaten = run.swallowed.includes(w.stronghold);
-    g.fillStyle = g.strokeStyle = w.broken ? '#8a90a8' : eaten ? BLOOM : FACTION_HEX[w.faction];
-    g.globalAlpha = w.broken || eaten ? 0.08 : 0.16;
+    if (!w.broken && isSwallowed(w.stronghold)) continue;
+    g.fillStyle = g.strokeStyle = w.broken ? SEALED_SHUT : FACTION_HEX[w.faction];
+    g.globalAlpha = w.broken ? 0.12 : 0.16;
     g.lineCap = 'round';
     g.lineWidth = 34 * u;
     for (const a of w.nodes)
@@ -418,12 +385,13 @@ export function drawMap(
     if (!known.has(n.id) && n.id !== run.heart) continue;
     const x = X(n.x), y = Y(n.y);
     const r = nodeRadius(n, fx?.style ?? 'glyph') * u;
+    const state = nodeState(run, n.id, ctx);
     const taken = run.visited.includes(n.id);
-    const dead = isSwallowed(n.id);
-    const here = n.id === run.at;
-    const canGo = open.has(n.id);
-    const lost = missed(n.id);
+    const dead = state === 'swallowed';
+    const here = state === 'here';
+    const lost = state === 'missed';
     const pulse = 0.5 + 0.5 * Math.sin(opts.time * 4);
+    const look = nodeLook(state, me, { taken, selected: n.id === opts.selected, hover: n.id === opts.hover, heart: n.kind === 'finale' });
 
     if (opts.fresh.has(n.id) && opts.freshT < 1 && opts.freshT > 0) {
       // Being swallowed: a ring collapsing in.
@@ -441,50 +409,19 @@ export function drawMap(
       g.fillStyle = glow;
       g.fillRect(x - r * 3.2, y - r * 3.2, r * 6.4, r * 6.4);
     }
-    if (here || canGo || n.id === opts.selected) {
-      g.fillStyle = here ? me : '#ffffff';
-      g.globalAlpha = here ? 0.25 + 0.15 * pulse : canGo ? 0.1 + 0.12 * pulse : 0.15;
-      g.beginPath();
-      g.arc(x, y, r * 1.9, 0, Math.PI * 2);
-      g.fill();
-      g.globalAlpha = 1;
-    }
-
-    g.beginPath();
-    if (n.kind === 'finale') star(g, x, y, r);
-    else g.arc(x, y, r, 0, Math.PI * 2);
-    g.fillStyle = dead ? '#3a1434' : taken ? me : n.kind === 'finale' ? '#5a1650' : '#141a33';
-    g.globalAlpha = taken && !here ? 0.55 : 1;
-    g.fill();
-    g.globalAlpha = 1;
-    g.lineWidth = (here || canGo || n.id === opts.selected || n.id === opts.hover ? 2.5 : 1.5) * u;
-    g.strokeStyle = here ? '#ffffff' : canGo ? me : sealed.has(n.id) && !dead ? SEALED : n.kind === 'finale' ? BLOOM : dead ? 'rgba(192, 74, 154, 0.5)' : lost ? 'rgba(110, 118, 150, 0.35)' : 'rgba(150, 170, 255, 0.5)';
-    g.stroke();
+    drawNodeBase(g, look, x, y, r, u, n.kind === 'finale', pulse);
 
     // The icon: the camp's roof, or the battle in the chosen style (?runicons=).
-    if (opts.thumb || n.kind === 'finale') continue;
-    const ink = taken || here ? '#06070f' : dead ? 'rgba(220, 140, 200, 0.4)' : 'rgba(230, 234, 255, 0.85)';
-    if (n.kind === 'start') glyph(g, n.kind, x, y, r, u, ink);
-    else drawIcon(g, run, n, fx?.style ?? 'glyph', x, y, r, u, { taken, dead, here, me });
-    if (lost) {
-      // Faded under a veil of the night: still there to read, no longer a place to go.
-      // It covers the difficulty ring, rival dots and pips too, then feathers out.
-      const R = r + 10 * u;
-      const veil = g.createRadialGradient(x, y, 0, x, y, R);
-      veil.addColorStop(0, 'rgba(6, 7, 15, 0.62)');
-      veil.addColorStop((r + 7 * u) / R, 'rgba(6, 7, 15, 0.62)');
-      veil.addColorStop(1, 'rgba(6, 7, 15, 0)');
-      g.fillStyle = veil;
-      g.beginPath();
-      g.arc(x, y, R, 0, Math.PI * 2);
-      g.fill();
+    if (opts.thumb) continue;
+    // The heart has no icon, but a lost finale still wears its padlock, as the key shows.
+    if (n.kind === 'finale') {
+      drawNodeTop(g, look, x, y, r, u, pulse);
+      continue;
     }
-    // A lock on a lost battle's node (#253): brighter while you could pay to reopen it.
-    if (sealed.has(n.id) && !dead) {
-      g.globalAlpha = reopen.has(n.id) ? 0.7 + 0.3 * pulse : 0.6;
-      lock(g, x + r * 0.75, y - r * 0.75, 6 * u);
-      g.globalAlpha = 1;
-    }
+    if (n.kind === 'start') glyph(g, n.kind, x, y, r, u, look.ink);
+    else drawIcon(g, run, n, fx?.style ?? 'glyph', x, y, r, u, { taken, dead, here, me, ink: look.ink });
+    // The veil on a node you passed by, and the padlock on a lost battle's (#253, #287).
+    drawNodeTop(g, look, x, y, r, u, pulse);
     // A flag on the checkpoint, while it can still save you.
     if (n.checkpoint && !dead && !run.checkpointUsed) {
       const fx = x + r * 0.7, fy = y - r * 0.7;
@@ -545,10 +482,10 @@ export function drawMap(
       g.beginPath();
       g.arc(bx, by, 6.5 * u, 0, Math.PI * 2);
       g.fill();
-      g.strokeStyle = '#b4ff39';
+      g.strokeStyle = RESCUE;
       g.lineWidth = 1.5 * u;
       g.stroke();
-      g.fillStyle = '#b4ff39';
+      g.fillStyle = RESCUE;
       g.font = `${9 * u}px sans-serif`;
       g.textAlign = 'center';
       g.textBaseline = 'middle';
@@ -1359,6 +1296,7 @@ export function runMap(
     close();
     closeCamp();
     const card = runHowTo({
+      color: FACTION_HEX[run.color],
       back: () => card.remove(),
       replay: () => {
         card.remove();

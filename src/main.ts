@@ -494,6 +494,7 @@ class App {
     const latest = listRuns()[0];
     this.setModal(
       runHowTo({
+        color: latest ? FACTION_HEX[latest.color] : undefined,
         back: () => this.showRunHub(),
         replay: latest ? () => this.showRunMap(latest, null, 'map') : undefined,
         replayLabel: latest ? `Tour the map (${latest.seedText})` : undefined,

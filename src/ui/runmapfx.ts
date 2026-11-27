@@ -386,9 +386,10 @@ export function drawIcon(
   y: number,
   r: number,
   u: number,
-  state: { taken: boolean; dead: boolean; here: boolean; me: string },
+  state: { taken: boolean; dead: boolean; here: boolean; me: string; ink?: string },
 ): void {
-  const ink = state.taken || state.here ? '#06070f' : state.dead ? 'rgba(220, 140, 200, 0.4)' : 'rgba(230, 234, 255, 0.9)';
+  // The map passes its node look's ink (#287); cards fall back to their own.
+  const ink = state.ink ?? (state.taken || state.here ? '#06070f' : state.dead ? 'rgba(220, 140, 200, 0.4)' : 'rgba(230, 234, 255, 0.9)');
   const live = !state.taken && !state.dead;
   if (style === 'constellation' || style === 'minimap') {
     const d = Math.round(r * 2);

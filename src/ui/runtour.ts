@@ -7,6 +7,8 @@
 import { GLOSSARY, stepText, type TourCamp, type TourFocus, type TourMark, type TourStep } from '../campaign/tour';
 import type { RunState } from '../campaign/run';
 import { el, esc } from './dom';
+import { FACTION_HEX } from '../content/factions';
+import { NODE_KEY, NODE_STATES, keyCanvas } from './nodelook';
 
 /** What the map lets the tour do. */
 export interface TourControl {
@@ -113,13 +115,16 @@ export function mountTour(host: HTMLElement, steps: TourStep[], run: RunState, c
 /**
  * How to play the procedural campaign: its terms, and a button for the map tour.
  * `replay` is left out where there's no map to tour; `note` says why instead.
+ * `color` is your swarm's, for the map key's nodes (#287).
  */
-export function runHowTo(h: { back: () => void; replay?: () => void; replayLabel?: string; note?: string }): HTMLDivElement {
+export function runHowTo(h: { back: () => void; replay?: () => void; replayLabel?: string; note?: string; color?: string }): HTMLDivElement {
   const m = el(`
     <div class="screen modal run-howto">
       <div class="card wide">
         <h2>Procedural campaign</h2>
         <dl class="glossary">${GLOSSARY.map((g) => `<dt>${g.term}</dt><dd>${g.text}</dd>`).join('')}</dl>
+        <h3>On the map</h3>
+        <ul class="node-key">${NODE_STATES.map((s) => `<li data-state="${s}"><span>${esc(NODE_KEY[s])}</span></li>`).join('')}</ul>
         ${h.note ? `<p class="hint">${esc(h.note)}</p>` : ''}
         <div class="row end">
           ${h.replay ? `<button data-a="replay">${esc(h.replayLabel ?? 'Replay the map tour')}</button>` : ''}
@@ -127,6 +132,8 @@ export function runHowTo(h: { back: () => void; replay?: () => void; replayLabel
         </div>
       </div>
     </div>`);
+  // The key's swatches are drawn by the map's own node look, so they can't drift from it.
+  for (const li of m.querySelectorAll<HTMLLIElement>('.node-key li')) li.prepend(keyCanvas(li.dataset.state as (typeof NODE_STATES)[number], h.color ?? FACTION_HEX[0]));
   m.querySelector('[data-a=back]')!.addEventListener('click', h.back);
   if (h.replay) m.querySelector('[data-a=replay]')!.addEventListener('click', h.replay);
   return m;

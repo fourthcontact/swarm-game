@@ -39,6 +39,7 @@ import { DemoOverlay } from './ui/demo';
 import { Hud } from './ui/hud';
 import { ScreenAwake } from './ui/wakeLock';
 import { initUiMode, isMobile, markMobileNoticeSeen, onCellData, setUiMode, shouldShowMobileNotice } from './ui/mobile';
+import { canResign, resign, resignCard, resignText, RESIGN_LABEL } from './ui/resign';
 import { buildSetup, campaignMenu, randomSetup, skirmishMenu, endButtons, endScreen, howToPlay, loadPrefs, mainMenu, menuCard, missionBriefing, missionDebrief, mobileNotice, NEXT_STEP_TEXT, pauseMenu, quickSetup, randomSeed, settingsScreen, skirmishSetup, tutorialMenu, type SuggestedMatch } from './ui/screens';
 import { creatureGrid } from './ui/creatures';
 import { BUILD } from './game/recording';
@@ -1641,7 +1642,14 @@ class App {
       resumeLabel: pauses ? 'Resume' : 'Back to the match',
       // the host can stop or restart the match without leaving the room (#183)
       restart: host ? () => this.restartMatch() : undefined,
-      more: host ? [{ label: 'End match', on: () => this.endMatch() }] : undefined,
+      more: [
+        ...(host ? [{ label: 'End match', on: () => this.endMatch() }] : []),
+        // Resignation (#291): out now, then watch; the last human out ends the match.
+        ...(canResign(g) ? [{ label: RESIGN_LABEL, on: () => this.confirmNet('Resign?', resignText(true), RESIGN_LABEL, () => {
+          this.toggleNetMenu();
+          resign(g);
+        }) }] : []),
+      ],
       quit: () => this.leaveMatch(),
       quitLabel: host && this.nextHostSeat() >= 0 ? `Leave (hosting passes to ${this.seatName(this.nextHostSeat())})` : 'Leave match',
       audio: this.sfx,
@@ -1936,7 +1944,7 @@ class App {
       g.session.setPaused(true);
       this.input.enabled = false;
       this.input.reset();
-      this.setModal(
+      const menu = (): HTMLDivElement =>
         pauseMenu({
           resume: () => this.togglePause(),
           // No Restart in a campaign battle (#253): retreat, and the loss seals the node until you pay to reopen it.
@@ -1952,11 +1960,19 @@ class App {
             this.finishRunBattle(report);
           },
           quitLabel: this.run ? 'Retreat (counts as a loss)' : undefined,
+          // Resignation (#291): skirmish only; a campaign battle retreats, a tutorial mission restarts.
+          more: this.run || g.mission || !canResign(g) ? undefined : [{
+            label: RESIGN_LABEL,
+            on: () => this.setModal(resignCard(() => {
+              this.togglePause();
+              resign(g);
+            }, () => this.setModal(menu()))),
+          }],
           audio: this.sfx,
           // Who's on your team (#74), in a team match.
           teams: teamLayout(g.world, g.human).team ? teamsList(g.world, g.human) : undefined,
-        }),
-      );
+        });
+      this.setModal(menu());
     }
   }
 

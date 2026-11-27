@@ -773,7 +773,7 @@ export class GameView {
         case 'neutralize':
           rings.add({ x: e.x, y: e.y, r0: e.r * 1.4, r1: e.r * 0.6, dur: 0.5, c: FACTION_RGB[e.prev] ?? WHITE, thick: 2 });
           // a resigner's nests all go at once (#291): no toast for each
-          if (e.prev === this.human && !w.factions[this.human].resigned) {
+          if (this.human >= 0 && e.prev === this.human && !w.factions[this.human].resigned) {
             sfx.lost(e.x, e.y);
             toast(`Lost ${NEST_NAMES[nest.type]}`, '#ff5d73');
           }

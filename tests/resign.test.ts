@@ -4,7 +4,7 @@ import { Kind, NestType } from '../src/sim/constants';
 import { sanitizeCommand } from '../src/sim/sanitize';
 import { step } from '../src/sim/step';
 import { fullHash } from '../src/sim/snapshot';
-import { spawnUnit, World } from '../src/sim/world';
+import { removeUnit, spawnUnit, World } from '../src/sim/world';
 import { play } from './rig';
 
 /**
@@ -101,6 +101,20 @@ describe('resignation (#291)', () => {
     expect(w.winnerTeam).toBe(2);
   });
 
+  it('a resigner\'s bot ally that beats the last human still wins', () => {
+    // team 0: human 0 and bot 1; team 1: human 2
+    const w = match([0, 0, 1], [0, 2], [1, 2], [5, 5, 5]);
+    applyCommand(w, { t: 'resign', p: 0 });
+    settle(w);
+    expect(w.over).toBe(false); // human 2 still stands
+    for (let i = 0; i < w.n; i++) if (w.alive[i] && w.owner[i] === 2) removeUnit(w, i);
+    w.nests[1].owner = -1;
+    settle(w);
+    expect(w.over).toBe(true);
+    expect(w.winnerTeam).toBe(0);
+    expect(w.winReason).toBe('elimination');
+  });
+
   it('no team qualifies: nobody wins', () => {
     // two teams, each a human and a bot
     const w = match([0, 0, 1, 1], [0, 2], [1, 3], [5, 5, 5, 5]);
@@ -146,8 +160,8 @@ describe('resignation in a room (#291)', () => {
     const worlds = [...matches.values()].map((x) => x.session.world);
     for (const w of worlds) {
       expect(w.over).toBe(true);
-      expect(w.winReason).toBe('resign');
-      expect(w.winnerTeam).toBe(w.teamOf[5]); // only the bot is left
+      expect(w.winReason).toBe('elimination'); // only the bot's team is left
+      expect(w.winnerTeam).toBe(w.teamOf[5]);
     }
     expect(new Set(worlds.map((w) => w.tick)).size).toBe(1);
     expect(new Set(worlds.map((w) => fullHash(w))).size).toBe(1);

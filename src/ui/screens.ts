@@ -904,7 +904,8 @@ export function skirmishSetup(onStart: (setup: MatchSetup, scenario?: string) =>
 export function pauseMenu(h: {
   resume: () => void;
   restart?: () => void;
-  quit: () => void;
+  /** left out when the way out is in `hosting` (#292) */
+  quit?: () => void;
   audio: AudioEngine;
   quitLabel?: string;
   teams?: string;
@@ -914,6 +915,8 @@ export function pauseMenu(h: {
   players?: string;
   /** more buttons after Restart (a room host's End match, #183) */
   more?: { label: string; on: () => void }[];
+  /** a room host's buttons (#292), in a group of their own below the playing ones */
+  hosting?: { label: string; on: () => void }[];
 }): HTMLDivElement {
   const m = el(`
     <div class="screen modal dim">
@@ -924,8 +927,9 @@ export function pauseMenu(h: {
           <button class="primary" data-a="resume">${h.resumeLabel ?? 'Resume'}</button>
           ${h.restart ? '<button data-a="restart">Restart match</button>' : ''}
           ${(h.more ?? []).map((b, i) => `<button data-more="${i}">${b.label}</button>`).join('')}
-          <button data-a="quit">${h.quitLabel ?? 'Quit to menu'}</button>
+          ${h.quit ? `<button data-a="quit">${h.quitLabel ?? 'Quit to menu'}</button>` : ''}
         </div>
+        ${h.hosting?.length ? `<h3>Hosting</h3><div class="menu-buttons hosting">${h.hosting.map((b, i) => `<button data-host="${i}">${b.label}</button>`).join('')}</div>` : ''}
         ${h.players ? `<h3>Players</h3>${h.players}` : ''}
         ${h.teams ? `<h3>Teams</h3>${h.teams}` : ''}
         <div class="fields"></div>
@@ -940,7 +944,8 @@ export function pauseMenu(h: {
   m.querySelector('[data-a=resume]')!.addEventListener('click', h.resume);
   if (h.restart) m.querySelector('[data-a=restart]')!.addEventListener('click', h.restart);
   (h.more ?? []).forEach((b, i) => m.querySelector(`[data-more="${i}"]`)!.addEventListener('click', b.on));
-  m.querySelector('[data-a=quit]')!.addEventListener('click', h.quit);
+  if (h.quit) m.querySelector('[data-a=quit]')!.addEventListener('click', h.quit);
+  (h.hosting ?? []).forEach((b, i) => m.querySelector(`[data-host="${i}"]`)!.addEventListener('click', b.on));
   return m;
 }
 
@@ -950,7 +955,7 @@ export function endScreen(
   victory: boolean,
   h: { rematch: () => void; newMap: () => void; quit: () => void },
   /** a networked match (#162): players' character names, and its own buttons in place of rematch / new map / menu */
-  net?: { names: Record<number, string>; buttons: { label: string; primary?: boolean; on: () => void }[]; note?: string },
+  net?: { names: Record<number, string>; buttons: { label: string; primary?: boolean; on: () => void }[]; note?: string; wait?: boolean },
 ): HTMLDivElement {
   const nameOf = (id: number) => net?.names[id] ?? FACTION_NAMES[id];
   const rows = w.factions
@@ -990,9 +995,10 @@ export function endScreen(
 }
 
 /** A networked end screen's buttons and note (#233: again when hosting moves, the rest of the screen left as it is). */
-export function endButtons(m: HTMLElement, net: { buttons: { label: string; primary?: boolean; on: () => void }[]; note?: string }): void {
+export function endButtons(m: HTMLElement, net: { buttons: { label: string; primary?: boolean; on: () => void }[]; note?: string; wait?: boolean }): void {
   const row = m.querySelector('.row.end')!;
-  row.innerHTML = net.note ? `<span class="hint">${net.note}</span>` : '';
+  // a guest waiting on the host gets a spinner (#292), so the screen doesn't look stuck
+  row.innerHTML = net.note ? `<span class="hint${net.wait ? ' wait' : ''}">${net.wait ? '<i class="spin small" aria-hidden="true"></i>' : ''}${net.note}</span>` : '';
   for (const b of net.buttons) {
     const btn = document.createElement('button');
     btn.textContent = b.label;

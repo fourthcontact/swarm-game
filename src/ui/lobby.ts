@@ -63,7 +63,7 @@ export function desyncCard(o: {
         <div class="menu-buttons">
           ${o.host ? '<button class="primary" data-a="resync" disabled>Resync and continue</button><button data-a="resume">Play on as is</button>' : ''}
           <button data-a="download">Download report</button>
-          <button data-a="leave">Leave match</button>
+          <button data-a="leave">Leave room</button>
         </div>
       </div>
     </div>`);
@@ -210,7 +210,7 @@ export function lobbyScreen(link: string, choices: Character[], h: LobbyHandlers
       <div class="lobby-bg" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
       <header class="lobby-head">
         <div class="lobby-title"><h2>${isHost ? 'Your room' : 'Joining a room'}</h2><span class="pill in" hidden>You’re in</span></div>
-        <button class="small" data-a="leave">Leave</button>
+        <button class="small" data-a="leave">Leave room</button>
         <p class="status hint"></p>
       </header>
       <nav class="lobby-tabs" role="tablist">
